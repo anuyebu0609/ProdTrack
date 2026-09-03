@@ -1,0 +1,1 @@
+export const Hero1="https://ik.imagekit.io/opzxy97kk/ChatGPT%20Image%20Sep%202,%202026,%2010_46_22%20AM.png"
