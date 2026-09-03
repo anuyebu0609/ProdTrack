@@ -93,7 +93,7 @@ const WhyChoose = () => {
     {
       title: "Team Overview",
       description:
-        "View all 18 team members' performance in one place and stay informed.",
+        "View all team members' performance in one place and stay informed.",
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
