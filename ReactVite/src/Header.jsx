@@ -8,6 +8,10 @@ const Header = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // ================================
+  // MENU ITEMS
+  // ================================
+
   const menuItems = [
     { name: "Home", href: "/" },
     { name: "Dashboard", href: "/Dashboard" },
@@ -17,6 +21,7 @@ const Header = () => {
   // ================================
   // CHECK ACTIVE PAGE
   // ================================
+
   const isActive = (href) => {
     if (href === "/") {
       return location.pathname === "/";
@@ -28,6 +33,7 @@ const Header = () => {
   // ================================
   // CLOSE MENU
   // ================================
+
   const handleMenuClick = () => {
     setMenuOpen(false);
   };
@@ -35,16 +41,27 @@ const Header = () => {
   // ================================
   // LOGO CLICK
   // ================================
+
   const handleLogoClick = (e) => {
     e.preventDefault();
     setMenuOpen(false);
     navigate("/");
   };
 
+  // ================================
+  // LOGIN CLICK
+  // ================================
+
+  const handleLoginClick = () => {
+    setMenuOpen(false);
+    navigate("/login");
+  };
+
   return (
     <header className="w-full bg-white border-b border-gray-100 shadow-sm sticky top-0 z-50">
 
       {/* ================= MAIN CONTAINER ================= */}
+
       <div className="w-[95%] md:w-[90%] max-w-[1400px] mx-auto">
 
         <div className="h-[75px] flex items-center justify-between">
@@ -72,10 +89,13 @@ const Header = () => {
               const active = isActive(item.href);
 
               return (
-                <a
+                <button
                   key={item.name}
-                  href={item.href}
-                  onClick={handleMenuClick}
+                  type="button"
+                  onClick={() => {
+                    navigate(item.href);
+                    handleMenuClick();
+                  }}
                   className={`
                     relative
                     text-[15px]
@@ -83,6 +103,9 @@ const Header = () => {
                     font-medium
                     transition-colors
                     duration-300
+                    bg-transparent
+                    border-none
+                    cursor-pointer
 
                     ${
                       active
@@ -106,15 +129,16 @@ const Header = () => {
                   `}
                 >
                   {item.name}
-                </a>
+                </button>
               );
             })}
 
 
             {/* ================= LOGIN BUTTON ================= */}
 
-            <a
-              href="/login"
+            <button
+              type="button"
+              onClick={handleLoginClick}
               className="
                 inline-flex
                 items-center
@@ -134,6 +158,7 @@ const Header = () => {
                 hover:bg-white
                 hover:text-[#FF8500]
                 hover:shadow-lg
+                cursor-pointer
               "
             >
 
@@ -156,7 +181,7 @@ const Header = () => {
 
               Login
 
-            </a>
+            </button>
 
           </nav>
 
@@ -178,6 +203,7 @@ const Header = () => {
               text-[#FF8500]
               hover:bg-[#FF8500]/10
               transition
+              cursor-pointer
             "
           >
 
@@ -291,6 +317,7 @@ const Header = () => {
                 hover:bg-[#FF8500]/10
                 hover:text-[#FF8500]
                 transition
+                cursor-pointer
               "
             >
 
@@ -324,12 +351,17 @@ const Header = () => {
                 const active = isActive(item.href);
 
                 return (
-                  <a
+                  <button
                     key={item.name}
-                    href={item.href}
-                    onClick={handleMenuClick}
+                    type="button"
+                    onClick={() => {
+                      navigate(item.href);
+                      handleMenuClick();
+                    }}
                     className={`
                       block
+                      w-full
+                      text-left
                       px-4
                       py-3
                       rounded-lg
@@ -337,6 +369,9 @@ const Header = () => {
                       font-medium
                       transition-all
                       duration-300
+                      bg-transparent
+                      border-none
+                      cursor-pointer
 
                       ${
                         active
@@ -346,7 +381,7 @@ const Header = () => {
                     `}
                   >
                     {item.name}
-                  </a>
+                  </button>
                 );
               })}
 
@@ -355,9 +390,9 @@ const Header = () => {
 
             {/* ================= MOBILE LOGIN ================= */}
 
-            <a
-              href="/login"
-              onClick={() => setMenuOpen(false)}
+            <button
+              type="button"
+              onClick={handleLoginClick}
               className="
                 mt-8
                 w-full
@@ -377,6 +412,7 @@ const Header = () => {
                 duration-300
                 hover:bg-white
                 hover:text-[#FF8500]
+                cursor-pointer
               "
             >
 
@@ -399,7 +435,7 @@ const Header = () => {
 
               Login
 
-            </a>
+            </button>
 
           </nav>
 
