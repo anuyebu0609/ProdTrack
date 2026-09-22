@@ -6,10 +6,8 @@ const Header = () => {
 
   const menuItems = [
     { name: "Home", href: "#home" },
-    { name: "Features", href: "#features" },
     { name: "Dashboard", href: "#dashboard" },
     { name: "About Us", href: "#about" },
-    { name: "Contact", href: "#contact" },
   ];
 
   return (
@@ -51,24 +49,25 @@ const Header = () => {
                   text-[#111111]
                   transition-colors
                   duration-300
-                  hover:text-[#5B2EFF]
+                  hover:text-[#FF8500]
 
                   after:absolute
                   after:left-0
                   after:-bottom-2
                   after:h-[2px]
-                  after:bg-[#5B2EFF]
+                  after:bg-[#FF8500]
                   after:w-0
                   after:transition-all
                   after:duration-300
                   hover:after:w-full
 
-                  ${index === 0 ? "text-[#5B2EFF] after:w-full" : ""}
+                  ${index === 0 ? "text-[#FF8500] after:w-full" : ""}
                 `}
               >
                 {item.name}
               </a>
             ))}
+
 
             {/* ================= LOGIN BUTTON ================= */}
 
@@ -82,16 +81,16 @@ const Header = () => {
                 px-6
                 py-2.5
                 rounded-full
-                bg-[#5B2EFF]
+                bg-[#FF8500]
                 text-white
                 text-[15px]
                 font-semibold
                 border-2
-                border-[#5B2EFF]
+                border-[#FF8500]
                 transition-all
                 duration-300
                 hover:bg-white
-                hover:text-[#5B2EFF]
+                hover:text-[#FF8500]
                 hover:shadow-lg
               "
             >
@@ -134,7 +133,7 @@ const Header = () => {
               w-10
               h-10
               rounded-lg
-              text-[#5B2EFF]
+              text-[#FF8500]
               hover:bg-[#5B2EFF]/10
               transition
             "
@@ -248,7 +247,7 @@ const Header = () => {
                 rounded-full
                 text-[#111111]
                 hover:bg-[#5B2EFF]/10
-                hover:text-[#5B2EFF]
+                hover:text-[#FF8500]
                 transition
               "
             >
@@ -296,8 +295,8 @@ const Header = () => {
 
                     ${
                       index === 0
-                        ? "bg-[#5B2EFF]/10 text-[#5B2EFF]"
-                        : "text-[#111111] hover:bg-[#5B2EFF]/10 hover:text-[#5B2EFF]"
+                        ? "bg-[#5B2EFF]/10 text-[#FF8500]"
+                        : "text-[#111111] hover:bg-[#5B2EFF]/10 hover:text-[#FF8500]"
                     }
                   `}
                 >
@@ -323,15 +322,15 @@ const Header = () => {
                 px-6
                 py-3
                 rounded-full
-                bg-[#5B2EFF]
+                bg-[#FF8500]
                 text-white
                 font-semibold
                 border-2
-                border-[#5B2EFF]
+                border-[#FF8500]
                 transition-all
                 duration-300
                 hover:bg-white
-                hover:text-[#5B2EFF]
+                hover:text-[#FF8500]
               "
             >
 

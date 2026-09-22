@@ -2,7 +2,7 @@ import { Logo } from "./assets/HeaderImage/HeaderImage";
 
 const Footer = () => {
   return (
-    <footer className="w-full bg-[#111214] text-white">
+    <footer className="w-full bg-[#123B7A] text-white">
 
       {/* ================= MAIN FOOTER ================= */}
 
@@ -294,7 +294,7 @@ const Footer = () => {
           {/* PHONE */}
 
           <a
-            href="tel:7397265693"
+            href="tel:111111111"
             className="
               flex
               items-center
@@ -326,7 +326,7 @@ const Footer = () => {
             </svg>
 
             <span>
-              7397265693
+              111111111
             </span>
 
           </a>

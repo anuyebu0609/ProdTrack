@@ -11,7 +11,7 @@ const Stay = () => {
           max-w-[1250px]
           mx-auto
 
-          bg-[#5B2EFF]
+          bg-[#FF8500]
 
           rounded-xl
           md:rounded-2xl
@@ -182,7 +182,7 @@ const Stay = () => {
 
                 bg-white
 
-                text-[#5B2EFF]
+                text-[#FF8500]
 
                 rounded-lg
 

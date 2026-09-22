@@ -13,7 +13,7 @@ const WhyChoose = () => {
           height="32"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="#5B2EFF"
+          stroke="#FF8500"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -39,7 +39,7 @@ const WhyChoose = () => {
           height="32"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="#5B2EFF"
+          stroke="#FF8500"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -61,7 +61,7 @@ const WhyChoose = () => {
           height="32"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="#5B2EFF"
+          stroke="#FF8500"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -101,7 +101,7 @@ const WhyChoose = () => {
           height="32"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="#5B2EFF"
+          stroke="#FF8500"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -151,7 +151,7 @@ const WhyChoose = () => {
             className="
               w-[55px]
               h-[4px]
-              bg-[#5B2EFF]
+              bg-[#FF8500]
               rounded-full
               mx-auto
               mt-3
@@ -259,7 +259,7 @@ const WhyChoose = () => {
                   transition-all
                   duration-300
 
-                  group-hover:bg-[#5B2EFF]
+                  group-hover:bg-[#FF8500]
                 "
               >
 

@@ -1,1 +1,1 @@
-export const Hero1="https://ik.imagekit.io/opzxy97kk/ChatGPT%20Image%20Sep%202,%202026,%2010_46_22%20AM.png"
+export const Hero1="https://ik.imagekit.io/opzxy97kk/ChatGPT%20Image%20Sep%2022,%202026,%2010_56_08%20AM.png"
