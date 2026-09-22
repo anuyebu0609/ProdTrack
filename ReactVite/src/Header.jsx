@@ -1,14 +1,45 @@
 import { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Logo } from "../src/assets/HeaderImage/HeaderImage";
 
 const Header = () => {
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const menuItems = [
-    { name: "Home", href: "#home" },
-    { name: "Dashboard", href: "#dashboard" },
-    { name: "About Us", href: "#about" },
+    { name: "Home", href: "/" },
+    { name: "Dashboard", href: "/Dashboard" },
+    { name: "About Us", href: "/AboutUs" },
   ];
+
+  // ================================
+  // CHECK ACTIVE PAGE
+  // ================================
+  const isActive = (href) => {
+    if (href === "/") {
+      return location.pathname === "/";
+    }
+
+    return location.pathname.toLowerCase() === href.toLowerCase();
+  };
+
+  // ================================
+  // CLOSE MENU
+  // ================================
+  const handleMenuClick = () => {
+    setMenuOpen(false);
+  };
+
+  // ================================
+  // LOGO CLICK
+  // ================================
+  const handleLogoClick = (e) => {
+    e.preventDefault();
+    setMenuOpen(false);
+    navigate("/");
+  };
 
   return (
     <header className="w-full bg-white border-b border-gray-100 shadow-sm sticky top-0 z-50">
@@ -21,8 +52,8 @@ const Header = () => {
           {/* ================= LOGO ================= */}
 
           <a
-            href="#home"
-            onClick={() => setMenuOpen(false)}
+            href="/"
+            onClick={handleLogoClick}
             className="flex items-center"
           >
             <img
@@ -37,36 +68,47 @@ const Header = () => {
 
           <nav className="hidden lg:flex items-center gap-8 xl:gap-10">
 
-            {menuItems.map((item, index) => (
-              <a
-                key={item.name}
-                href={item.href}
-                className={`
-                  relative
-                  text-[15px]
-                  xl:text-[16px]
-                  font-medium
-                  text-[#111111]
-                  transition-colors
-                  duration-300
-                  hover:text-[#FF8500]
+            {menuItems.map((item) => {
+              const active = isActive(item.href);
 
-                  after:absolute
-                  after:left-0
-                  after:-bottom-2
-                  after:h-[2px]
-                  after:bg-[#FF8500]
-                  after:w-0
-                  after:transition-all
-                  after:duration-300
-                  hover:after:w-full
+              return (
+                <a
+                  key={item.name}
+                  href={item.href}
+                  onClick={handleMenuClick}
+                  className={`
+                    relative
+                    text-[15px]
+                    xl:text-[16px]
+                    font-medium
+                    transition-colors
+                    duration-300
 
-                  ${index === 0 ? "text-[#FF8500] after:w-full" : ""}
-                `}
-              >
-                {item.name}
-              </a>
-            ))}
+                    ${
+                      active
+                        ? "text-[#FF8500]"
+                        : "text-[#111111] hover:text-[#FF8500]"
+                    }
+
+                    after:absolute
+                    after:left-0
+                    after:-bottom-2
+                    after:h-[2px]
+                    after:bg-[#FF8500]
+                    after:transition-all
+                    after:duration-300
+
+                    ${
+                      active
+                        ? "after:w-full"
+                        : "after:w-0 hover:after:w-full"
+                    }
+                  `}
+                >
+                  {item.name}
+                </a>
+              );
+            })}
 
 
             {/* ================= LOGIN BUTTON ================= */}
@@ -134,7 +176,7 @@ const Header = () => {
               h-10
               rounded-lg
               text-[#FF8500]
-              hover:bg-[#5B2EFF]/10
+              hover:bg-[#FF8500]/10
               transition
             "
           >
@@ -221,8 +263,8 @@ const Header = () => {
           >
 
             <a
-              href="#home"
-              onClick={() => setMenuOpen(false)}
+              href="/"
+              onClick={handleLogoClick}
             >
               <img
                 src={Logo}
@@ -232,7 +274,7 @@ const Header = () => {
             </a>
 
 
-            {/* CLOSE BUTTON */}
+            {/* ================= CLOSE BUTTON ================= */}
 
             <button
               type="button"
@@ -246,7 +288,7 @@ const Header = () => {
                 justify-center
                 rounded-full
                 text-[#111111]
-                hover:bg-[#5B2EFF]/10
+                hover:bg-[#FF8500]/10
                 hover:text-[#FF8500]
                 transition
               "
@@ -278,31 +320,35 @@ const Header = () => {
 
             <div className="flex flex-col gap-2">
 
-              {menuItems.map((item, index) => (
-                <a
-                  key={item.name}
-                  href={item.href}
-                  onClick={() => setMenuOpen(false)}
-                  className={`
-                    block
-                    px-4
-                    py-3
-                    rounded-lg
-                    text-[17px]
-                    font-medium
-                    transition-all
-                    duration-300
+              {menuItems.map((item) => {
+                const active = isActive(item.href);
 
-                    ${
-                      index === 0
-                        ? "bg-[#5B2EFF]/10 text-[#FF8500]"
-                        : "text-[#111111] hover:bg-[#5B2EFF]/10 hover:text-[#FF8500]"
-                    }
-                  `}
-                >
-                  {item.name}
-                </a>
-              ))}
+                return (
+                  <a
+                    key={item.name}
+                    href={item.href}
+                    onClick={handleMenuClick}
+                    className={`
+                      block
+                      px-4
+                      py-3
+                      rounded-lg
+                      text-[17px]
+                      font-medium
+                      transition-all
+                      duration-300
+
+                      ${
+                        active
+                          ? "bg-[#FF8500]/10 text-[#FF8500]"
+                          : "text-[#111111] hover:bg-[#FF8500]/10 hover:text-[#FF8500]"
+                      }
+                    `}
+                  >
+                    {item.name}
+                  </a>
+                );
+              })}
 
             </div>
 
@@ -333,6 +379,8 @@ const Header = () => {
                 hover:text-[#FF8500]
               "
             >
+
+              {/* User Icon */}
 
               <svg
                 xmlns="http://www.w3.org/2000/svg"
