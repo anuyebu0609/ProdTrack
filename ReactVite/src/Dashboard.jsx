@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { supabase } from "./supabaseClient";
 
 const Dashboard = () => {
   /* =========================================================
@@ -43,11 +44,99 @@ const Dashboard = () => {
   };
 
   /* =========================================================
+     DATE HELPERS
+     ========================================================= */
+
+  const cloneDate = (date) => new Date(date.getTime());
+
+  const addDays = (date, amount) => {
+    const result = cloneDate(date);
+    result.setDate(result.getDate() + amount);
+    return result;
+  };
+
+  // Monday is the first day of the ProdTrack week.
+  const getMonday = (date) => {
+    const result = cloneDate(date);
+    const day = result.getDay();
+    const difference = day === 0 ? -6 : 1 - day;
+    result.setDate(result.getDate() + difference);
+    result.setHours(0, 0, 0, 0);
+    return result;
+  };
+
+  const dateKey = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatDayDate = (date) =>
+    date.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+    });
+
+  const formatWeekRange = (start, end) => {
+    const sameYear =
+      start.getFullYear() === end.getFullYear();
+
+    if (sameYear) {
+      return `${formatDayDate(start)} – ${formatDayDate(
+        end
+      )}, ${end.getFullYear()}`;
+    }
+
+    return `${formatDayDate(start)}, ${start.getFullYear()} – ${formatDayDate(
+      end
+    )}, ${end.getFullYear()}`;
+  };
+
+  const getCalendarDays = (monthDate) => {
+    const firstDay = new Date(
+      monthDate.getFullYear(),
+      monthDate.getMonth(),
+      1
+    );
+
+    const firstCalendarDay = new Date(firstDay);
+    const firstWeekday = firstDay.getDay();
+    firstCalendarDay.setDate(
+      firstDay.getDate() - firstWeekday
+    );
+
+    return Array.from({ length: 42 }, (_, index) =>
+      addDays(firstCalendarDay, index)
+    );
+  };
+
+  /* =========================================================
      STATE
   ========================================================= */
 
+  const defaultWeekStart = getMonday(new Date());
+
   const [activeSection, setActiveSection] =
     useState("dashboard");
+
+  const [weekStart, setWeekStart] =
+    useState(defaultWeekStart);
+
+  const [weekEnd, setWeekEnd] =
+    useState(addDays(defaultWeekStart, 5));
+
+  const [calendarOpen, setCalendarOpen] =
+    useState(false);
+
+  const [calendarMonth, setCalendarMonth] =
+    useState(
+      new Date(
+        defaultWeekStart.getFullYear(),
+        defaultWeekStart.getMonth(),
+        1
+      )
+    );
 
   const [production, setProduction] =
     useState(emptyProduction);
@@ -70,38 +159,246 @@ const Dashboard = () => {
   const [showSavedMessage, setShowSavedMessage] =
     useState(false);
 
+  const [userEmail, setUserEmail] =
+    useState("");
+
+  const [isSaving, setIsSaving] =
+    useState(false);
+
   /* =========================================================
-     LOAD SAVED DATA
+     SUPABASE WEEK DATA HELPERS
+  ========================================================= */
+
+  const getEmptyWeek = () => ({
+    production: { ...emptyProduction },
+    quality: {
+      Mon: { ...emptyQuality.Mon },
+      Tue: { ...emptyQuality.Tue },
+      Wed: { ...emptyQuality.Wed },
+      Thu: { ...emptyQuality.Thu },
+      Fri: { ...emptyQuality.Fri },
+      Sat: { ...emptyQuality.Sat },
+    },
+    attendance: { ...emptyAttendance },
+  });
+
+  const applyWeekData = (data) => {
+    const next = data || getEmptyWeek();
+
+    const nextProduction = {
+      ...emptyProduction,
+      ...(next.production || {}),
+    };
+
+    const nextQuality = {
+      Mon: { ...emptyQuality.Mon },
+      Tue: { ...emptyQuality.Tue },
+      Wed: { ...emptyQuality.Wed },
+      Thu: { ...emptyQuality.Thu },
+      Fri: { ...emptyQuality.Fri },
+      Sat: { ...emptyQuality.Sat },
+      ...(next.quality || {}),
+    };
+
+    const nextAttendance = {
+      ...emptyAttendance,
+      ...(next.attendance || {}),
+    };
+
+    setProduction(nextProduction);
+    setSavedProduction(nextProduction);
+
+    setQuality(nextQuality);
+    setSavedQuality(nextQuality);
+
+    setAttendance(nextAttendance);
+    setSavedAttendance(nextAttendance);
+  };
+
+  /* =========================================================
+     LOAD CURRENT USER + WEEK DATA FROM SUPABASE
+  ========================================================= */
+
+  const loadWeekData = async (startDate) => {
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        window.location.href = "/login";
+        return;
+      }
+
+      setUserEmail(user.email || "Team Member");
+
+      const weekKey = dateKey(startDate);
+
+      const [productionResult, qualityResult, attendanceResult] =
+        await Promise.all([
+          supabase
+            .from("production")
+            .select("*")
+            .eq("user_id", user.id)
+            .eq("week_start", weekKey)
+            .maybeSingle(),
+
+          supabase
+            .from("quality")
+            .select("*")
+            .eq("user_id", user.id)
+            .eq("week_start", weekKey)
+            .maybeSingle(),
+
+          supabase
+            .from("attendance")
+            .select("*")
+            .eq("user_id", user.id)
+            .eq("week_start", weekKey)
+            .maybeSingle(),
+        ]);
+
+      if (productionResult.error) {
+        throw productionResult.error;
+      }
+
+      if (qualityResult.error) {
+        throw qualityResult.error;
+      }
+
+      if (attendanceResult.error) {
+        throw attendanceResult.error;
+      }
+
+      const productionRow = productionResult.data;
+      const qualityRow = qualityResult.data;
+      const attendanceRow = attendanceResult.data;
+
+      const weekData = {
+        production: productionRow
+          ? {
+              Mon: productionRow.monday ?? "",
+              Tue: productionRow.tuesday ?? "",
+              Wed: productionRow.wednesday ?? "",
+              Thu: productionRow.thursday ?? "",
+              Fri: productionRow.friday ?? "",
+              Sat: productionRow.saturday ?? "",
+            }
+          : emptyProduction,
+
+        quality: qualityRow
+          ? {
+              Mon: {
+                audited: qualityRow.monday_audited ?? "",
+                errors: qualityRow.monday_errors ?? "",
+              },
+              Tue: {
+                audited: qualityRow.tuesday_audited ?? "",
+                errors: qualityRow.tuesday_errors ?? "",
+              },
+              Wed: {
+                audited: qualityRow.wednesday_audited ?? "",
+                errors: qualityRow.wednesday_errors ?? "",
+              },
+              Thu: {
+                audited: qualityRow.thursday_audited ?? "",
+                errors: qualityRow.thursday_errors ?? "",
+              },
+              Fri: {
+                audited: qualityRow.friday_audited ?? "",
+                errors: qualityRow.friday_errors ?? "",
+              },
+              Sat: {
+                audited: qualityRow.saturday_audited ?? "",
+                errors: qualityRow.saturday_errors ?? "",
+              },
+            }
+          : emptyQuality,
+
+        attendance: attendanceRow
+          ? {
+              Mon: attendanceRow.monday ?? "",
+              Tue: attendanceRow.tuesday ?? "",
+              Wed: attendanceRow.wednesday ?? "",
+              Thu: attendanceRow.thursday ?? "",
+              Fri: attendanceRow.friday ?? "",
+              Sat: attendanceRow.saturday ?? "",
+            }
+          : emptyAttendance,
+      };
+
+      applyWeekData(weekData);
+    } catch (error) {
+      console.error("Unable to load Supabase week data:", error);
+      applyWeekData(null);
+    }
+  };
+
+  /* =========================================================
+     LOAD CURRENT WEEK
   ========================================================= */
 
   useEffect(() => {
-    const savedData = localStorage.getItem(
-      "prodtrack-week-data"
+    loadWeekData(defaultWeekStart);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* =========================================================
+     SELECT A MONDAY-SATURDAY WEEK
+  ========================================================= */
+
+  const selectWeek = (selectedDate) => {
+    const selectedMonday = getMonday(selectedDate);
+    const selectedSaturday = addDays(selectedMonday, 5);
+
+    setWeekStart(selectedMonday);
+    setWeekEnd(selectedSaturday);
+
+    setCalendarMonth(
+      new Date(
+        selectedMonday.getFullYear(),
+        selectedMonday.getMonth(),
+        1
+      )
     );
 
-    if (savedData) {
-      try {
-        const data = JSON.parse(savedData);
+    setCalendarOpen(false);
 
-        if (data.production) {
-          setProduction(data.production);
-          setSavedProduction(data.production);
-        }
+    loadWeekData(selectedMonday);
+  };
 
-        if (data.quality) {
-          setQuality(data.quality);
-          setSavedQuality(data.quality);
-        }
+  const previousMonth = () => {
+    setCalendarMonth(
+      new Date(
+        calendarMonth.getFullYear(),
+        calendarMonth.getMonth() - 1,
+        1
+      )
+    );
+  };
 
-        if (data.attendance) {
-          setAttendance(data.attendance);
-          setSavedAttendance(data.attendance);
-        }
-      } catch (error) {
-        console.log("Unable to load saved data");
-      }
-    }
-  }, []);
+  const nextMonth = () => {
+    setCalendarMonth(
+      new Date(
+        calendarMonth.getFullYear(),
+        calendarMonth.getMonth() + 1,
+        1
+      )
+    );
+  };
+
+  const isSameDate = (first, second) =>
+    dateKey(first) === dateKey(second);
+
+  const isInSelectedWeek = (date) =>
+    date >= weekStart && date <= weekEnd;
+
+  const getDayDate = (day) =>
+    addDays(weekStart, days.indexOf(day));
+
+  const getDayDateLabel = (day) =>
+    formatDayDate(getDayDate(day));
 
   /* =========================================================
      CHECK CHANGES
@@ -116,30 +413,136 @@ const Dashboard = () => {
       JSON.stringify(savedAttendance);
 
   /* =========================================================
-     SAVE DATA
+     SAVE DATA TO SUPABASE
   ========================================================= */
 
-  const saveChanges = () => {
-    const data = {
-      production,
-      quality,
-      attendance,
-    };
+  const saveChanges = async () => {
+    if (isSaving) return;
 
-    localStorage.setItem(
-      "prodtrack-week-data",
-      JSON.stringify(data)
-    );
+    try {
+      setIsSaving(true);
 
-    setSavedProduction(production);
-    setSavedQuality(quality);
-    setSavedAttendance(attendance);
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-    setShowSavedMessage(true);
+      if (authError || !user) {
+        window.location.href = "/login";
+        return;
+      }
 
-    setTimeout(() => {
-      setShowSavedMessage(false);
-    }, 3000);
+      setUserEmail(user.email || "Team Member");
+
+      const weekKey = dateKey(weekStart);
+
+      const productionPayload = {
+        user_id: user.id,
+        week_start: weekKey,
+        monday: Number(production.Mon) || 0,
+        tuesday: Number(production.Tue) || 0,
+        wednesday: Number(production.Wed) || 0,
+        thursday: Number(production.Thu) || 0,
+        friday: Number(production.Fri) || 0,
+        saturday: Number(production.Sat) || 0,
+        updated_at: new Date().toISOString(),
+      };
+
+      const qualityPayload = {
+        user_id: user.id,
+        week_start: weekKey,
+        monday_audited: Number(quality.Mon?.audited) || 0,
+        monday_errors: Number(quality.Mon?.errors) || 0,
+        tuesday_audited: Number(quality.Tue?.audited) || 0,
+        tuesday_errors: Number(quality.Tue?.errors) || 0,
+        wednesday_audited: Number(quality.Wed?.audited) || 0,
+        wednesday_errors: Number(quality.Wed?.errors) || 0,
+        thursday_audited: Number(quality.Thu?.audited) || 0,
+        thursday_errors: Number(quality.Thu?.errors) || 0,
+        friday_audited: Number(quality.Fri?.audited) || 0,
+        friday_errors: Number(quality.Fri?.errors) || 0,
+        saturday_audited: Number(quality.Sat?.audited) || 0,
+        saturday_errors: Number(quality.Sat?.errors) || 0,
+        updated_at: new Date().toISOString(),
+      };
+
+      const attendancePayload = {
+        user_id: user.id,
+        week_start: weekKey,
+        monday: attendance.Mon || null,
+        tuesday: attendance.Tue || null,
+        wednesday: attendance.Wed || null,
+        thursday: attendance.Thu || null,
+        friday: attendance.Fri || null,
+        saturday: attendance.Sat || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const [productionResult, qualityResult, attendanceResult] =
+        await Promise.all([
+          supabase
+            .from("production")
+            .upsert(productionPayload, {
+              onConflict: "user_id,week_start",
+            })
+            .select()
+            .single(),
+
+          supabase
+            .from("quality")
+            .upsert(qualityPayload, {
+              onConflict: "user_id,week_start",
+            })
+            .select()
+            .single(),
+
+          supabase
+            .from("attendance")
+            .upsert(attendancePayload, {
+              onConflict: "user_id,week_start",
+            })
+            .select()
+            .single(),
+        ]);
+
+      if (productionResult.error) {
+        throw productionResult.error;
+      }
+
+      if (qualityResult.error) {
+        throw qualityResult.error;
+      }
+
+      if (attendanceResult.error) {
+        throw attendanceResult.error;
+      }
+
+      setSavedProduction({ ...production });
+      setSavedQuality({
+        Mon: { ...quality.Mon },
+        Tue: { ...quality.Tue },
+        Wed: { ...quality.Wed },
+        Thu: { ...quality.Thu },
+        Fri: { ...quality.Fri },
+        Sat: { ...quality.Sat },
+      });
+      setSavedAttendance({ ...attendance });
+
+      setShowSavedMessage(true);
+
+      setTimeout(() => {
+        setShowSavedMessage(false);
+      }, 3000);
+    } catch (error) {
+      console.error("Unable to save Supabase data:", error);
+      alert(
+        `Unable to save your weekly data. ${
+          error?.message || "Please try again."
+        }`
+      );
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   /* =========================================================
@@ -581,7 +984,7 @@ const Dashboard = () => {
               <div>
 
                 <p className="text-sm font-semibold">
-                  Team Member
+                  {userEmail || "Team Member"}
                 </p>
 
                 <p className="text-xs text-white/60">
@@ -639,19 +1042,165 @@ const Dashboard = () => {
               </div>
 
 
-              {/* WEEK */}
+              {/* WEEK CALENDAR */}
 
-              <div className="hidden md:flex items-center gap-3 px-4 py-2.5 rounded-lg border border-[#E2EAF4] bg-[#F8FAFC]">
+              <div className="hidden md:block relative">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCalendarOpen((open) => !open)
+                  }
+                  className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-[#E2EAF4] bg-[#F8FAFC] hover:border-[#FF8500] hover:bg-[#FFF7ED] transition text-left"
+                >
+                  <Icon
+                    type="calendar"
+                    size={18}
+                  />
 
-                <Icon
-                  type="calendar"
-                  size={18}
-                />
+                  <div>
+                    <p className="text-xs text-gray-500">
+                      Selected Week
+                    </p>
 
-                <span className="text-sm font-medium">
-                  Monday – Saturday
-                </span>
+                    <p className="text-sm font-semibold text-[#123B7A]">
+                      {formatWeekRange(weekStart, weekEnd)}
+                    </p>
+                  </div>
 
+                  <span
+                    className={`ml-1 text-xs transition-transform ${
+                      calendarOpen ? "rotate-180" : ""
+                    }`}
+                  >
+                    ▼
+                  </span>
+                </button>
+
+                {calendarOpen && (
+                  <div className="absolute left-0 top-full mt-2 z-[100] w-[350px] max-w-[calc(100vw-24px)] bg-white border border-gray-200 rounded-2xl shadow-2xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <button
+                        type="button"
+                        onClick={previousMonth}
+                        className="w-9 h-9 rounded-lg hover:bg-[#FFF7ED] text-[#123B7A] font-bold"
+                        aria-label="Previous month"
+                      >
+                        ‹
+                      </button>
+
+                      <div className="text-sm font-bold text-[#123B7A]">
+                        {calendarMonth.toLocaleDateString(
+                          "en-IN",
+                          {
+                            month: "long",
+                            year: "numeric",
+                          }
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={nextMonth}
+                        className="w-9 h-9 rounded-lg hover:bg-[#FFF7ED] text-[#123B7A] font-bold"
+                        aria-label="Next month"
+                      >
+                        ›
+                      </button>
+                    </div>
+
+                    <div className="mb-3 rounded-xl bg-[#F8FAFC] border border-[#E2EAF4] px-3 py-2">
+                      <p className="text-[11px] text-gray-500">
+                        Selected Monday – Saturday
+                      </p>
+
+                      <p className="text-sm font-bold text-[#123B7A]">
+                        {formatWeekRange(weekStart, weekEnd)}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-1 mb-2">
+                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+                        (dayName) => (
+                          <div
+                            key={dayName}
+                            className={`text-center text-[11px] font-bold py-1 ${
+                              dayName === "Sun"
+                                ? "text-gray-300"
+                                : "text-gray-500"
+                            }`}
+                          >
+                            {dayName}
+                          </div>
+                        )
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-1">
+                      {getCalendarDays(calendarMonth).map(
+                        (date) => {
+                          const isSunday =
+                            date.getDay() === 0;
+
+                          const isCurrentMonth =
+                            date.getMonth() ===
+                              calendarMonth.getMonth() &&
+                            date.getFullYear() ===
+                              calendarMonth.getFullYear();
+
+                          const selected =
+                            isInSelectedWeek(date);
+
+                          const isWeekStart =
+                            isSameDate(date, weekStart);
+
+                          const isWeekEnd =
+                            isSameDate(date, weekEnd);
+
+                          return (
+                            <button
+                              type="button"
+                              key={dateKey(date)}
+                              disabled={isSunday}
+                              onClick={() =>
+                                !isSunday &&
+                                selectWeek(date)
+                              }
+                              className={`h-9 rounded-lg text-xs font-semibold transition ${
+                                isSunday
+                                  ? "text-gray-200 cursor-not-allowed"
+                                  : selected
+                                  ? "bg-[#FF8500] text-white shadow-sm"
+                                  : isCurrentMonth
+                                  ? "text-[#123B7A] hover:bg-[#FFF0DE]"
+                                  : "text-gray-300 hover:bg-gray-50"
+                              } ${
+                                isWeekStart || isWeekEnd
+                                  ? "ring-2 ring-[#FF8500]/30"
+                                  : ""
+                              }`}
+                              title={
+                                isSunday
+                                  ? "Sunday is not part of the ProdTrack week"
+                                  : `Select week starting ${formatDayDate(
+                                      getMonday(date)
+                                    )}`
+                              }
+                            >
+                              {date.getDate()}
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
+
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <p className="text-[11px] text-gray-500">
+                        Click any Monday–Saturday date to select its
+                        complete Monday–Saturday week.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
 
@@ -671,7 +1220,7 @@ const Dashboard = () => {
                 <div className="hidden sm:block">
 
                   <p className="text-sm font-semibold">
-                    Team Member
+                    {userEmail || "Team Member"}
                   </p>
 
                   <p className="text-xs text-gray-500">
@@ -1128,9 +1677,14 @@ const Dashboard = () => {
                   {days.map((day) => (
                     <div key={day}>
 
-                      <label className="block text-sm font-semibold mb-2">
-                        {day}
-                      </label>
+                      <div className="mb-2">
+                        <p className="text-sm font-bold text-[#123B7A]">
+                          {day}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {getDayDateLabel(day)}
+                        </p>
+                      </div>
 
                       <input
                         type="number"
@@ -1218,11 +1772,15 @@ const Dashboard = () => {
 
                         <div>
 
-                          <label className="block text-sm font-bold mb-2">
+                          <p className="text-sm font-bold text-[#123B7A]">
                             {day}
-                          </label>
+                          </p>
 
-                          <div className="text-xs text-gray-500">
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {getDayDateLabel(day)}
+                          </p>
+
+                          <div className="text-xs text-gray-500 mt-2">
                             Daily Audit
                           </div>
 
@@ -1357,9 +1915,14 @@ const Dashboard = () => {
                   {days.map((day) => (
                     <div key={day}>
 
-                      <label className="block text-sm font-semibold mb-2">
-                        {day}
-                      </label>
+                      <div className="mb-2">
+                        <p className="text-sm font-bold text-[#123B7A]">
+                          {day}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {getDayDateLabel(day)}
+                        </p>
+                      </div>
 
                       <select
                         value={attendance[day]}
@@ -1430,9 +1993,10 @@ const Dashboard = () => {
 
                     <button
                       onClick={saveChanges}
-                      className="w-full sm:w-auto px-7 py-3 rounded-xl bg-[#FF8500] text-white font-semibold hover:bg-[#e87500] transition shadow-md"
+                      disabled={isSaving}
+                      className="w-full sm:w-auto px-7 py-3 rounded-xl bg-[#FF8500] text-white font-semibold hover:bg-[#e87500] transition shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      Save Changes
+                      {isSaving ? "Saving..." : "Save Changes"}
                     </button>
 
                   </div>
@@ -1562,9 +2126,14 @@ const Dashboard = () => {
                         className="text-center"
                       >
 
-                        <p className="text-sm font-semibold mb-3">
-                          {day}
-                        </p>
+                        <div className="mb-3">
+                          <p className="text-sm font-bold text-[#123B7A]">
+                            {day}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {getDayDateLabel(day)}
+                          </p>
+                        </div>
 
                         <div className="h-[160px] bg-[#F8FAFC] rounded-xl flex items-end justify-center p-3">
 
@@ -1735,8 +2304,13 @@ const Dashboard = () => {
                               className="border-b border-gray-100"
                             >
 
-                              <td className="px-4 py-4 font-semibold">
-                                {day}
+                              <td className="px-4 py-4">
+                                <p className="font-semibold">
+                                  {day}
+                                </p>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  {getDayDateLabel(day)}
+                                </p>
                               </td>
 
                               <td className="px-4 py-4">
@@ -1985,6 +2559,9 @@ const Dashboard = () => {
 
                         <p className="font-bold">
                           {day}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {getDayDateLabel(day)}
                         </p>
 
                         <div

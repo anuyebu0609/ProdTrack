@@ -16,6 +16,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 
+import { supabase } from "./supabaseClient";
 
 // ============================================================
 // ZOD VALIDATION
@@ -24,18 +25,14 @@ import {
 const loginSchema = z.object({
   loginId: z
     .string()
-    .min(1, "Login ID is required")
+    .min(1, "Email is required")
+    .email("Please enter a valid email address")
     .trim(),
 
   password: z
     .string()
-    .min(1, "Password is required")
-    .regex(
-      /^[A-Za-z0-9]{7}$/,
-      "Password must be exactly 7 alphanumeric characters"
-    ),
+    .min(1, "Password is required"),
 });
-
 
 // ============================================================
 // LOGIN COMPONENT
@@ -43,6 +40,7 @@ const loginSchema = z.object({
 
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState("");
 
   const {
     register,
@@ -58,32 +56,43 @@ const Login = () => {
     },
   });
 
-
   // ============================================================
-  // LOGIN SUBMIT
+  // LOGIN SUBMIT - SUPABASE
   // ============================================================
 
   const onSubmit = async (data) => {
-    console.log("Login Data:", data);
+    setLoginError("");
 
-    /*
-      Later you can connect Firebase / backend here.
+    try {
+      const { data: authData, error } =
+        await supabase.auth.signInWithPassword({
+          email: data.loginId,
+          password: data.password,
+        });
 
-      Example:
-
-      const response = await loginUser(data);
-
-      if (response.success) {
-        navigate("/dashboard");
+      if (error) {
+        setLoginError(error.message);
+        return;
       }
-    */
 
-    alert(`Login successful!\nLogin ID: ${data.loginId}`);
+      if (!authData?.user) {
+        setLoginError("Login failed. Please try again.");
+        return;
+      }
 
-    // Remove this if you don't want to clear the form
-    reset();
+      // Login successful
+      reset();
+
+      // Go to dashboard
+      window.location.href = "/Dashboard";
+    } catch (error) {
+      console.error("Login Error:", error);
+
+      setLoginError(
+        "Something went wrong. Please try again."
+      );
+    }
   };
-
 
   return (
     <div className="min-h-screen w-full bg-[#F5FAFF]">
@@ -95,7 +104,6 @@ const Login = () => {
       <div className="w-[95%] md:w-[92%] lg:w-[90%] mx-auto min-h-screen flex items-center py-8 md:py-10">
 
         <div className="w-full grid lg:grid-cols-2 gap-6 xl:gap-10 items-stretch">
-
 
           {/* ==================================================
               LEFT SIDE - LOGIN FORM
@@ -143,7 +151,6 @@ const Login = () => {
 
                   </div>
 
-
                   {/* Logo Text */}
                   <div className="text-[29px] font-bold tracking-tight">
 
@@ -160,7 +167,6 @@ const Login = () => {
                 </div>
 
               </div>
-
 
               {/* ================= HEADING ================= */}
 
@@ -182,7 +188,6 @@ const Login = () => {
 
               </div>
 
-
               {/* ==================================================
                   FORM
               ================================================== */}
@@ -192,8 +197,7 @@ const Login = () => {
                 className="space-y-5"
               >
 
-
-                {/* ================= LOGIN ID ================= */}
+                {/* ================= EMAIL ================= */}
 
                 <div>
 
@@ -201,9 +205,8 @@ const Login = () => {
                     htmlFor="loginId"
                     className="block text-[14px] font-semibold text-[#294C78] mb-2"
                   >
-                    Login ID
+                    Email
                   </label>
-
 
                   <div
                     className={`relative flex items-center border rounded-xl transition-all ${
@@ -223,18 +226,16 @@ const Login = () => {
                       }`}
                     />
 
-
                     <input
                       id="loginId"
-                      type="text"
-                      placeholder="Enter your Login ID"
+                      type="email"
+                      placeholder="Enter your registered email"
                       autoComplete="username"
                       {...register("loginId")}
                       className="w-full h-[54px] pl-12 pr-4 rounded-xl outline-none bg-transparent text-[#123B78] placeholder:text-[#91A4BB] text-[15px]"
                     />
 
                   </div>
-
 
                   {/* Error */}
                   {errors.loginId && (
@@ -244,7 +245,6 @@ const Login = () => {
                   )}
 
                 </div>
-
 
                 {/* ================= PASSWORD ================= */}
 
@@ -256,7 +256,6 @@ const Login = () => {
                   >
                     Password
                   </label>
-
 
                   <div
                     className={`relative flex items-center border rounded-xl transition-all ${
@@ -276,20 +275,16 @@ const Login = () => {
                       }`}
                     />
 
-
                     <input
                       id="password"
                       type={showPassword ? "text" : "password"}
                       placeholder="Enter your password"
                       autoComplete="current-password"
-                      maxLength={7}
                       {...register("password")}
                       className="w-full h-[54px] pl-12 pr-12 rounded-xl outline-none bg-transparent text-[#123B78] placeholder:text-[#91A4BB] text-[15px] tracking-wider"
                     />
 
-
                     {/* Show / Hide Password */}
-
                     <button
                       type="button"
                       onClick={() =>
@@ -297,30 +292,16 @@ const Login = () => {
                       }
                       className="absolute right-4 text-[#6B87A8] hover:text-[#123B78] transition"
                     >
-
                       {showPassword ? (
                         <EyeOff size={19} />
                       ) : (
                         <Eye size={19} />
                       )}
-
                     </button>
 
                   </div>
 
-
-                  {/* Password Helper */}
-
-                  {!errors.password && (
-                    <p className="text-[#8A9CB1] text-xs mt-1.5">
-                      Password must contain exactly 7 letters or numbers.
-                      Example: <b>SOS1196</b>
-                    </p>
-                  )}
-
-
                   {/* Error */}
-
                   {errors.password && (
                     <p className="text-red-500 text-xs mt-1.5">
                       {errors.password.message}
@@ -329,6 +310,15 @@ const Login = () => {
 
                 </div>
 
+                {/* ================= SUPABASE LOGIN ERROR ================= */}
+
+                {loginError && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                    <p className="text-red-600 text-sm">
+                      {loginError}
+                    </p>
+                  </div>
+                )}
 
                 {/* ================= FORGOT PASSWORD ================= */}
 
@@ -338,14 +328,15 @@ const Login = () => {
                     type="button"
                     className="text-[#3473C5] text-sm font-medium hover:text-[#FF8500] transition"
                     onClick={() => {
-                      alert("Please contact your team administrator.");
+                      alert(
+                        "Please contact your team administrator to reset your password."
+                      );
                     }}
                   >
                     Forgot password?
                   </button>
 
                 </div>
-
 
                 {/* ================= LOGIN BUTTON ================= */}
 
@@ -368,7 +359,6 @@ const Login = () => {
 
               </form>
 
-
               {/* ================= SECURITY NOTE ================= */}
 
               <div className="flex items-center justify-center gap-2 mt-7">
@@ -388,7 +378,6 @@ const Login = () => {
 
           </div>
 
-
           {/* ==================================================
               RIGHT SIDE - PRODUCTIVITY HERO
           ================================================== */}
@@ -401,9 +390,7 @@ const Login = () => {
 
             <div className="absolute w-[250px] h-[250px] bg-[#CFE6FF]/50 rounded-full -left-[100px] bottom-[50px]" />
 
-
             <div className="relative z-10 h-full flex flex-col justify-between p-7 sm:p-10 md:p-12">
-
 
               {/* ================= HERO TEXT ================= */}
 
@@ -412,7 +399,6 @@ const Login = () => {
                 <span className="inline-block bg-white/80 text-[#E96D00] font-semibold text-sm px-4 py-1.5 rounded-full mb-5">
                   ProdTrack
                 </span>
-
 
                 <h2 className="text-[36px] sm:text-[42px] xl:text-[48px] leading-[1.08] font-bold text-[#123B78]">
 
@@ -426,10 +412,10 @@ const Login = () => {
 
                 </h2>
 
-
                 <p className="text-[#5C7697] text-[16px] md:text-[18px] leading-7 mt-4 max-w-[500px]">
 
                   Better monitoring. Higher productivity.
+
                   <br />
 
                   Happier teams.
@@ -437,7 +423,6 @@ const Login = () => {
                 </p>
 
               </div>
-
 
               {/* ================= STAT CARDS ================= */}
 
@@ -461,11 +446,12 @@ const Login = () => {
                   </p>
 
                   <div className="h-1.5 bg-[#E7EDF4] rounded-full mt-2">
+
                     <div className="h-full w-full bg-[#19A96B] rounded-full" />
+
                   </div>
 
                 </div>
-
 
                 {/* Quality */}
 
@@ -485,11 +471,12 @@ const Login = () => {
                   </p>
 
                   <div className="h-1.5 bg-[#E7EDF4] rounded-full mt-2">
+
                     <div className="h-full w-[98%] bg-[#19A96B] rounded-full" />
+
                   </div>
 
                 </div>
-
 
                 {/* Attendance */}
 
@@ -509,11 +496,12 @@ const Login = () => {
                   </p>
 
                   <div className="h-1.5 bg-[#E7EDF4] rounded-full mt-2">
+
                     <div className="h-full w-full bg-[#19A96B] rounded-full" />
+
                   </div>
 
                 </div>
-
 
                 {/* Green Status */}
 
@@ -531,7 +519,6 @@ const Login = () => {
                 </div>
 
               </div>
-
 
               {/* ==================================================
                   EMPLOYEE ILLUSTRATION
@@ -557,7 +544,6 @@ const Login = () => {
 
                   </div>
 
-
                   {/* Conveyor */}
 
                   <div className="absolute bottom-0 left-[8%] right-[3%] h-[30px] bg-[#607795] rounded-full">
@@ -574,7 +560,6 @@ const Login = () => {
 
                   </div>
 
-
                   {/* Boxes */}
 
                   <div className="absolute bottom-[28px] right-[18%] w-16 h-12 bg-[#FFB45C] rounded-md" />
@@ -582,7 +567,6 @@ const Login = () => {
                   <div className="absolute bottom-[28px] right-[32%] w-16 h-12 bg-[#FFB45C] rounded-md" />
 
                 </div>
-
 
                 {/* ================= EMPLOYEE 1 ================= */}
 
@@ -598,7 +582,6 @@ const Login = () => {
 
                   </div>
 
-
                   {/* Body */}
 
                   <div className="w-[105px] h-[145px] bg-[#123B78] rounded-t-[35px] mt-[-5px] relative">
@@ -609,13 +592,11 @@ const Login = () => {
 
                   </div>
 
-
                   {/* Arm */}
 
                   <div className="absolute -left-5 top-[65px] w-[25px] h-[80px] bg-[#123B78] rounded-full rotate-[25deg]" />
 
                 </div>
-
 
                 {/* ================= EMPLOYEE 2 ================= */}
 
@@ -629,7 +610,6 @@ const Login = () => {
 
                   </div>
 
-
                   {/* Body */}
 
                   <div className="w-[115px] h-[155px] bg-[#1E5799] rounded-t-[38px] mt-[-4px]">
@@ -639,7 +619,6 @@ const Login = () => {
                   </div>
 
                 </div>
-
 
                 {/* ================= EMPLOYEE 3 ================= */}
 
@@ -653,13 +632,11 @@ const Login = () => {
 
                   </div>
 
-
                   {/* Body */}
 
                   <div className="w-[100px] h-[140px] bg-[#123B78] rounded-t-[35px] mt-[-4px]" />
 
                 </div>
-
 
                 {/* Success Icon */}
 
@@ -673,7 +650,6 @@ const Login = () => {
                 </div>
 
               </div>
-
 
               {/* ================= BOTTOM MESSAGE ================= */}
 
