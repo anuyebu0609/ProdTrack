@@ -147,23 +147,13 @@ const Dashboard = () => {
   const [attendance, setAttendance] =
     useState(emptyAttendance);
 
-  const [savedProduction, setSavedProduction] =
-    useState(emptyProduction);
-
-  const [savedQuality, setSavedQuality] =
-    useState(emptyQuality);
-
-  const [savedAttendance, setSavedAttendance] =
-    useState(emptyAttendance);
-
-  const [showSavedMessage, setShowSavedMessage] =
-    useState(false);
 
   const [userEmail, setUserEmail] =
     useState("");
 
-  const [isSaving, setIsSaving] =
+  const [isAdmin, setIsAdmin] =
     useState(false);
+
 
   /* =========================================================
      SUPABASE WEEK DATA HELPERS
@@ -206,13 +196,8 @@ const Dashboard = () => {
     };
 
     setProduction(nextProduction);
-    setSavedProduction(nextProduction);
-
     setQuality(nextQuality);
-    setSavedQuality(nextQuality);
-
     setAttendance(nextAttendance);
-    setSavedAttendance(nextAttendance);
   };
 
   /* =========================================================
@@ -340,6 +325,38 @@ const Dashboard = () => {
   ========================================================= */
 
   useEffect(() => {
+    const checkAdmin = async () => {
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+          setIsAdmin(false);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("admin_users")
+          .select("id")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (error) {
+          console.error("Admin check error:", error);
+          setIsAdmin(false);
+          return;
+        }
+
+        setIsAdmin(Boolean(data));
+      } catch (error) {
+        console.error("Unable to check admin status:", error);
+        setIsAdmin(false);
+      }
+    };
+
+    checkAdmin();
     loadWeekData(defaultWeekStart);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -399,151 +416,6 @@ const Dashboard = () => {
 
   const getDayDateLabel = (day) =>
     formatDayDate(getDayDate(day));
-
-  /* =========================================================
-     CHECK CHANGES
-  ========================================================= */
-
-  const hasChanges =
-    JSON.stringify(production) !==
-      JSON.stringify(savedProduction) ||
-    JSON.stringify(quality) !==
-      JSON.stringify(savedQuality) ||
-    JSON.stringify(attendance) !==
-      JSON.stringify(savedAttendance);
-
-  /* =========================================================
-     SAVE DATA TO SUPABASE
-  ========================================================= */
-
-  const saveChanges = async () => {
-    if (isSaving) return;
-
-    try {
-      setIsSaving(true);
-
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError || !user) {
-        window.location.href = "/login";
-        return;
-      }
-
-      setUserEmail(user.email || "Team Member");
-
-      const weekKey = dateKey(weekStart);
-
-      const productionPayload = {
-        user_id: user.id,
-        week_start: weekKey,
-        monday: Number(production.Mon) || 0,
-        tuesday: Number(production.Tue) || 0,
-        wednesday: Number(production.Wed) || 0,
-        thursday: Number(production.Thu) || 0,
-        friday: Number(production.Fri) || 0,
-        saturday: Number(production.Sat) || 0,
-        updated_at: new Date().toISOString(),
-      };
-
-      const qualityPayload = {
-        user_id: user.id,
-        week_start: weekKey,
-        monday_audited: Number(quality.Mon?.audited) || 0,
-        monday_errors: Number(quality.Mon?.errors) || 0,
-        tuesday_audited: Number(quality.Tue?.audited) || 0,
-        tuesday_errors: Number(quality.Tue?.errors) || 0,
-        wednesday_audited: Number(quality.Wed?.audited) || 0,
-        wednesday_errors: Number(quality.Wed?.errors) || 0,
-        thursday_audited: Number(quality.Thu?.audited) || 0,
-        thursday_errors: Number(quality.Thu?.errors) || 0,
-        friday_audited: Number(quality.Fri?.audited) || 0,
-        friday_errors: Number(quality.Fri?.errors) || 0,
-        saturday_audited: Number(quality.Sat?.audited) || 0,
-        saturday_errors: Number(quality.Sat?.errors) || 0,
-        updated_at: new Date().toISOString(),
-      };
-
-      const attendancePayload = {
-        user_id: user.id,
-        week_start: weekKey,
-        monday: attendance.Mon || null,
-        tuesday: attendance.Tue || null,
-        wednesday: attendance.Wed || null,
-        thursday: attendance.Thu || null,
-        friday: attendance.Fri || null,
-        saturday: attendance.Sat || null,
-        updated_at: new Date().toISOString(),
-      };
-
-      const [productionResult, qualityResult, attendanceResult] =
-        await Promise.all([
-          supabase
-            .from("production")
-            .upsert(productionPayload, {
-              onConflict: "user_id,week_start",
-            })
-            .select()
-            .single(),
-
-          supabase
-            .from("quality")
-            .upsert(qualityPayload, {
-              onConflict: "user_id,week_start",
-            })
-            .select()
-            .single(),
-
-          supabase
-            .from("attendance")
-            .upsert(attendancePayload, {
-              onConflict: "user_id,week_start",
-            })
-            .select()
-            .single(),
-        ]);
-
-      if (productionResult.error) {
-        throw productionResult.error;
-      }
-
-      if (qualityResult.error) {
-        throw qualityResult.error;
-      }
-
-      if (attendanceResult.error) {
-        throw attendanceResult.error;
-      }
-
-      setSavedProduction({ ...production });
-      setSavedQuality({
-        Mon: { ...quality.Mon },
-        Tue: { ...quality.Tue },
-        Wed: { ...quality.Wed },
-        Thu: { ...quality.Thu },
-        Fri: { ...quality.Fri },
-        Sat: { ...quality.Sat },
-      });
-      setSavedAttendance({ ...attendance });
-
-      setShowSavedMessage(true);
-
-      setTimeout(() => {
-        setShowSavedMessage(false);
-      }, 3000);
-    } catch (error) {
-      console.error("Unable to save Supabase data:", error);
-      alert(
-        `Unable to save your weekly data. ${
-          error?.message || "Please try again."
-        }`
-      );
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   /* =========================================================
      PRODUCTION CALCULATION
@@ -790,14 +662,6 @@ const Dashboard = () => {
       );
     }
 
-    if (type === "edit") {
-      return (
-        <svg {...props}>
-          <path d="M12 20h9" />
-          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
-        </svg>
-      );
-    }
 
     return null;
   };
@@ -842,11 +706,6 @@ const Dashboard = () => {
       icon: "home",
     },
     {
-      name: "Update My Week",
-      id: "update",
-      icon: "edit",
-    },
-    {
       name: "Production",
       id: "production",
       icon: "production",
@@ -860,11 +719,6 @@ const Dashboard = () => {
       name: "Attendance",
       id: "attendance",
       icon: "attendance",
-    },
-    {
-      name: "Team Overview",
-      id: "team",
-      icon: "team",
     },
   ];
 
@@ -1204,30 +1058,50 @@ const Dashboard = () => {
               </div>
 
 
-              {/* USER */}
+              {/* TOP RIGHT USER + ADMIN BUTTON */}
 
               <div className="flex items-center gap-3 ml-auto">
 
-                <div className="w-10 h-10 rounded-full bg-[#123B7A] text-white flex items-center justify-center">
+                <div className="flex items-center gap-3">
 
-                  <Icon
-                    type="user"
-                    size={19}
-                  />
+                  <div className="w-10 h-10 rounded-full bg-[#123B7A] text-white flex items-center justify-center">
+
+                    <Icon
+                      type="user"
+                      size={19}
+                    />
+
+                  </div>
+
+                  <div className="hidden sm:block">
+
+                    <p className="text-sm font-semibold">
+                      {userEmail || "Team Member"}
+                    </p>
+
+                    <p className="text-xs text-gray-500">
+                      Weekly Performance
+                    </p>
+
+                  </div>
 
                 </div>
 
-                <div className="hidden sm:block">
-
-                  <p className="text-sm font-semibold">
-                    {userEmail || "Team Member"}
-                  </p>
-
-                  <p className="text-xs text-gray-500">
-                    Weekly Performance
-                  </p>
-
-                </div>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.href = "/AdminDashboard";
+                    }}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#FF8500] text-white font-semibold text-sm hover:bg-[#e87500] transition-all duration-200 shadow-md hover:shadow-lg whitespace-nowrap"
+                  >
+                    <Icon
+                      type="team"
+                      size={18}
+                    />
+                    <span>Admin Dashboard</span>
+                  </button>
+                )}
 
               </div>
 
@@ -1258,7 +1132,7 @@ const Dashboard = () => {
                 </h1>
 
                 <p className="text-gray-500 mt-1">
-                  Here's your weekly performance at a glance.
+                  Here's your weekly performance at a glance. Your data is updated by your team lead.
                 </p>
 
               </div>
@@ -1615,428 +1489,6 @@ const Dashboard = () => {
                 )}
 
               </div>
-
-            </section>
-
-
-            {/* =================================================
-                UPDATE MY WEEK
-            ================================================== */}
-
-            <section
-              id="update"
-              className="scroll-mt-24"
-            >
-
-              <div className="mb-5">
-
-                <h2 className="text-xl md:text-2xl font-bold">
-                  Update My Week
-                </h2>
-
-                <p className="text-sm text-gray-500 mt-1">
-                  Enter your production, quality and attendance
-                  for each day.
-                </p>
-
-              </div>
-
-
-              {/* PRODUCTION INPUT */}
-
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-7">
-
-                <div className="flex items-center gap-3 mb-6">
-
-                  <div className="w-11 h-11 rounded-full bg-[#FFF0DE] text-[#FF8500] flex items-center justify-center">
-
-                    <Icon
-                      type="production"
-                      size={22}
-                    />
-
-                  </div>
-
-                  <div>
-
-                    <h3 className="font-bold text-lg">
-                      Production Update
-                    </h3>
-
-                    <p className="text-sm text-gray-500">
-                      Daily target: 60 accounts
-                    </p>
-
-                  </div>
-
-                </div>
-
-
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-
-                  {days.map((day) => (
-                    <div key={day}>
-
-                      <div className="mb-2">
-                        <p className="text-sm font-bold text-[#123B7A]">
-                          {day}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {getDayDateLabel(day)}
-                        </p>
-                      </div>
-
-                      <input
-                        type="number"
-                        min="0"
-                        max="1000"
-                        value={production[day]}
-                        onChange={(e) =>
-                          setProduction({
-                            ...production,
-                            [day]: e.target.value,
-                          })
-                        }
-                        placeholder="0"
-                        className="w-full h-12 px-4 rounded-xl border border-gray-200 outline-none focus:border-[#FF8500] focus:ring-2 focus:ring-[#FF8500]/10 text-[#123B7A] font-semibold"
-                      />
-
-                      <p className="text-xs text-gray-400 mt-1">
-                        Target: 60
-                      </p>
-
-                    </div>
-                  ))}
-
-                </div>
-
-              </div>
-
-
-              {/* QUALITY INPUT */}
-
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-7 mt-5">
-
-                <div className="flex items-center gap-3 mb-6">
-
-                  <div className="w-11 h-11 rounded-full bg-blue-50 text-[#123B7A] flex items-center justify-center">
-
-                    <Icon
-                      type="quality"
-                      size={22}
-                    />
-
-                  </div>
-
-                  <div>
-
-                    <h3 className="font-bold text-lg">
-                      Quality Update
-                    </h3>
-
-                    <p className="text-sm text-gray-500">
-                      Enter audited accounts and number of errors
-                    </p>
-
-                  </div>
-
-                </div>
-
-
-                <div className="space-y-4">
-
-                  {days.map((day) => {
-
-                    const audited =
-                      Number(
-                        quality[day]?.audited
-                      ) || 0;
-
-                    const errors =
-                      Number(
-                        quality[day]?.errors
-                      ) || 0;
-
-                    const dayQuality =
-                      audited > 0
-                        ? ((audited - errors) /
-                            audited) *
-                          100
-                        : 0;
-
-                    return (
-                      <div
-                        key={day}
-                        className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-[#F8FAFC] rounded-xl p-4"
-                      >
-
-                        <div>
-
-                          <p className="text-sm font-bold text-[#123B7A]">
-                            {day}
-                          </p>
-
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            {getDayDateLabel(day)}
-                          </p>
-
-                          <div className="text-xs text-gray-500 mt-2">
-                            Daily Audit
-                          </div>
-
-                        </div>
-
-
-                        <div>
-
-                          <label className="block text-xs text-gray-500 mb-2">
-                            Audited Accounts
-                          </label>
-
-                          <input
-                            type="number"
-                            min="0"
-                            value={
-                              quality[day]?.audited
-                            }
-                            onChange={(e) =>
-                              setQuality({
-                                ...quality,
-                                [day]: {
-                                  ...quality[day],
-                                  audited:
-                                    e.target.value,
-                                },
-                              })
-                            }
-                            placeholder="10"
-                            className="w-full h-11 px-4 rounded-lg border border-gray-200 bg-white outline-none focus:border-[#FF8500] focus:ring-2 focus:ring-[#FF8500]/10"
-                          />
-
-                        </div>
-
-
-                        <div>
-
-                          <label className="block text-xs text-gray-500 mb-2">
-                            Errors
-                          </label>
-
-                          <input
-                            type="number"
-                            min="0"
-                            value={
-                              quality[day]?.errors
-                            }
-                            onChange={(e) =>
-                              setQuality({
-                                ...quality,
-                                [day]: {
-                                  ...quality[day],
-                                  errors:
-                                    e.target.value,
-                                },
-                              })
-                            }
-                            placeholder="0"
-                            className="w-full h-11 px-4 rounded-lg border border-gray-200 bg-white outline-none focus:border-[#FF8500] focus:ring-2 focus:ring-[#FF8500]/10"
-                          />
-
-                        </div>
-
-
-                        <div>
-
-                          <label className="block text-xs text-gray-500 mb-2">
-                            Quality
-                          </label>
-
-                          <div
-                            className={`h-11 px-4 rounded-lg flex items-center font-bold ${
-                              audited === 0
-                                ? "bg-gray-100 text-gray-400"
-                                : dayQuality >= 98
-                                ? "bg-green-100 text-green-700"
-                                : "bg-red-100 text-red-600"
-                            }`}
-                          >
-
-                            {audited === 0
-                              ? "--"
-                              : `${dayQuality.toFixed(
-                                  1
-                                )}%`}
-
-                          </div>
-
-                        </div>
-
-                      </div>
-                    );
-                  })}
-
-                </div>
-
-              </div>
-
-
-              {/* ATTENDANCE INPUT */}
-
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-7 mt-5">
-
-                <div className="flex items-center gap-3 mb-6">
-
-                  <div className="w-11 h-11 rounded-full bg-blue-50 text-[#123B7A] flex items-center justify-center">
-
-                    <Icon
-                      type="attendance"
-                      size={22}
-                    />
-
-                  </div>
-
-                  <div>
-
-                    <h3 className="font-bold text-lg">
-                      Attendance Update
-                    </h3>
-
-                    <p className="text-sm text-gray-500">
-                      Select Present or Absent
-                    </p>
-
-                  </div>
-
-                </div>
-
-
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-
-                  {days.map((day) => (
-                    <div key={day}>
-
-                      <div className="mb-2">
-                        <p className="text-sm font-bold text-[#123B7A]">
-                          {day}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {getDayDateLabel(day)}
-                        </p>
-                      </div>
-
-                      <select
-                        value={attendance[day]}
-                        onChange={(e) =>
-                          setAttendance({
-                            ...attendance,
-                            [day]: e.target.value,
-                          })
-                        }
-                        className="w-full h-12 px-3 rounded-xl border border-gray-200 bg-white outline-none focus:border-[#FF8500] focus:ring-2 focus:ring-[#FF8500]/10 font-medium"
-                      >
-
-                        <option value="">
-                          Select
-                        </option>
-
-                        <option value="Present">
-                          Present
-                        </option>
-
-                        <option value="Absent">
-                          Absent
-                        </option>
-
-                      </select>
-
-                    </div>
-                  ))}
-
-                </div>
-
-              </div>
-
-
-              {/* SAVE BUTTON */}
-
-              {hasChanges && (
-                <div className="sticky bottom-5 z-30 mt-6">
-
-                  <div className="bg-white border border-gray-200 shadow-xl rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-
-                    <div className="flex items-center gap-3">
-
-                      <div className="w-10 h-10 rounded-full bg-[#FFF0DE] text-[#FF8500] flex items-center justify-center">
-
-                        <Icon
-                          type="edit"
-                          size={20}
-                        />
-
-                      </div>
-
-                      <div>
-
-                        <p className="font-semibold">
-                          You have unsaved changes
-                        </p>
-
-                        <p className="text-xs text-gray-500">
-                          Save your weekly updates to reflect them
-                          across the dashboard.
-                        </p>
-
-                      </div>
-
-                    </div>
-
-
-                    <button
-                      onClick={saveChanges}
-                      disabled={isSaving}
-                      className="w-full sm:w-auto px-7 py-3 rounded-xl bg-[#FF8500] text-white font-semibold hover:bg-[#e87500] transition shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {isSaving ? "Saving..." : "Save Changes"}
-                    </button>
-
-                  </div>
-
-                </div>
-              )}
-
-
-              {/* SAVE SUCCESS */}
-
-              {showSavedMessage && (
-                <div className="fixed right-5 bottom-5 z-[100]">
-
-                  <div className="bg-green-600 text-white rounded-xl px-5 py-4 shadow-xl flex items-center gap-3">
-
-                    <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-
-                      <Icon
-                        type="check"
-                        size={18}
-                      />
-
-                    </div>
-
-                    <div>
-
-                      <p className="font-semibold">
-                        Saved successfully
-                      </p>
-
-                      <p className="text-xs text-white/80">
-                        Your dashboard has been updated.
-                      </p>
-
-                    </div>
-
-                  </div>
-
-                </div>
-              )}
 
             </section>
 
@@ -2636,205 +2088,6 @@ const Dashboard = () => {
 
             </section>
 
-
-            {/* =================================================
-                TEAM OVERVIEW
-            ================================================== */}
-
-            <section
-              id="team"
-              className="scroll-mt-24"
-            >
-
-              <div className="mb-5">
-
-                <h2 className="text-xl md:text-2xl font-bold">
-                  Team Overview
-                </h2>
-
-                <p className="text-sm text-gray-500 mt-1">
-                  Your current performance summary.
-                </p>
-
-              </div>
-
-
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-7">
-
-                <div className="overflow-x-auto">
-
-                  <table className="w-full min-w-[750px]">
-
-                    <thead>
-
-                      <tr className="bg-[#F8FAFC] text-left text-sm">
-
-                        <th className="px-4 py-3">
-                          User
-                        </th>
-
-                        <th className="px-4 py-3">
-                          Today
-                        </th>
-
-                        <th className="px-4 py-3">
-                          Weekly Production
-                        </th>
-
-                        <th className="px-4 py-3">
-                          Balance
-                        </th>
-
-                        <th className="px-4 py-3">
-                          Quality
-                        </th>
-
-                        <th className="px-4 py-3">
-                          Status
-                        </th>
-
-                      </tr>
-
-                    </thead>
-
-
-                    <tbody>
-
-                      <tr className="border-b border-gray-100">
-
-                        <td className="px-4 py-5">
-
-                          <div className="flex items-center gap-3">
-
-                            <div className="w-9 h-9 rounded-full bg-[#123B7A] text-white flex items-center justify-center">
-
-                              <Icon
-                                type="user"
-                                size={17}
-                              />
-
-                            </div>
-
-                            <span className="font-semibold">
-                              You
-                            </span>
-
-                          </div>
-
-                        </td>
-
-
-                        <td className="px-4 py-5 font-semibold">
-
-                          {Number(
-                            production.Sat
-                          ) ||
-                            Number(
-                              production.Fri
-                            ) ||
-                            0}
-
-                        </td>
-
-
-                        <td className="px-4 py-5 font-semibold">
-
-                          {weeklyProduction} / 300
-
-                        </td>
-
-
-                        <td className="px-4 py-5">
-
-                          <span className="font-semibold text-[#FF8500]">
-
-                            {productionRemaining}
-
-                          </span>
-
-                        </td>
-
-
-                        <td className="px-4 py-5 font-semibold">
-
-                          {totalAudited > 0
-                            ? `${qualityPercentage.toFixed(
-                                1
-                              )}%`
-                            : "--"}
-
-                        </td>
-
-
-                        <td className="px-4 py-5">
-
-                          <StatusBadge
-                            good={overallOnTrack}
-                          >
-
-                            {overallOnTrack
-                              ? "On Track"
-                              : "Needs Attention"}
-
-                          </StatusBadge>
-
-                        </td>
-
-                      </tr>
-
-                    </tbody>
-
-                  </table>
-
-                </div>
-
-              </div>
-
-            </section>
-
-
-            {/* =================================================
-                BOTTOM INFORMATION
-            ================================================== */}
-
-            <section>
-
-              <div className="bg-[#123B7A] rounded-2xl p-6 md:p-8 text-white">
-
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5">
-
-                  <div>
-
-                    <h2 className="text-xl font-bold">
-                      Stay on Target Every Week
-                    </h2>
-
-                    <p className="text-white/70 text-sm mt-2 max-w-xl">
-
-                      Update your production, quality and
-                      attendance every day. Your dashboard
-                      automatically calculates your weekly
-                      performance.
-
-                    </p>
-
-                  </div>
-
-
-                  <button
-                    onClick={() =>
-                      scrollToSection("update")
-                    }
-                    className="shrink-0 px-6 py-3 bg-[#FF8500] rounded-xl font-semibold hover:bg-[#e87500] transition"
-                  >
-                    Update My Week
-                  </button>
-
-                </div>
-
-              </div>
-
-            </section>
 
           </div>
 

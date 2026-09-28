@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { supabase } from "./supabaseClient";
 
 const DAYS = [
@@ -50,6 +51,91 @@ const WEEKLY_TARGET = 300;
 const DAILY_TARGET = 60;
 const QUALITY_TARGET = 98;
 
+const normalizeText = (value) =>
+  String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+
+const parseExcelDate = (value) => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return formatDate(value);
+  }
+
+  if (typeof value === "number") {
+    const parsed = XLSX.SSF.parse_date_code(value);
+
+    if (!parsed) return null;
+
+    return `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(
+      parsed.d
+    ).padStart(2, "0")}`;
+  }
+
+  const text = String(value ?? "").trim();
+
+  if (!text) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return text;
+  }
+
+  const parts = text.split(/[\/.-]/).map((part) => part.trim());
+
+  if (parts.length === 3) {
+    let day;
+    let month;
+    let year;
+
+    if (parts[0].length === 4) {
+      year = Number(parts[0]);
+      month = Number(parts[1]);
+      day = Number(parts[2]);
+    } else {
+      day = Number(parts[0]);
+      month = Number(parts[1]);
+      year = Number(parts[2]);
+    }
+
+    if (
+      Number.isInteger(day) &&
+      Number.isInteger(month) &&
+      Number.isInteger(year) &&
+      year >= 2000 &&
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= 31
+    ) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(
+        2,
+        "0"
+      )}`;
+    }
+  }
+
+  return null;
+};
+
+const getDayIndexFromDate = (dateString) => {
+  const date = new Date(`${dateString}T00:00:00`);
+  const day = date.getDay();
+
+  if (day === 0) return -1;
+
+  return day - 1;
+};
+
+const isNonNegativeInteger = (value) => {
+  if (value === "" || value === null || value === undefined) {
+    return false;
+  }
+
+  const number = Number(value);
+
+  return Number.isInteger(number) && number >= 0;
+};
+
 const getMonday = (date) => {
   const d = new Date(date);
   const day = d.getDay();
@@ -75,7 +161,16 @@ const formatDate = (date) => {
 const formatDisplayDate = (date) => {
   if (!date) return "";
 
-  return new Date(date).toLocaleDateString("en-IN", {
+  // Treat YYYY-MM-DD as a calendar date so the displayed day does not
+  // shift backward/forward because of the browser's timezone.
+  const [year, month, day] = String(date)
+    .slice(0, 10)
+    .split("-")
+    .map(Number);
+
+  const localDate = new Date(year, month - 1, day);
+
+  return localDate.toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -245,6 +340,14 @@ const AdminDashboard = () => {
 
   const [errorMessage, setErrorMessage] = useState("");
 
+  const [importingExcel, setImportingExcel] = useState(false);
+
+  const [importMessage, setImportMessage] = useState("");
+
+  const [importErrors, setImportErrors] = useState([]);
+
+  const [showImportPanel, setShowImportPanel] = useState(false);
+
   const loadAdminData = async () => {
     try {
       setLoading(true);
@@ -335,6 +438,416 @@ const AdminDashboard = () => {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+
+  const handleExcelImport = async (event) => {
+    const file = event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file) return;
+
+    try {
+      setImportingExcel(true);
+      setImportMessage("");
+      setImportErrors([]);
+
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, {
+        type: "array",
+        cellDates: true,
+      });
+
+      const sheetName = workbook.SheetNames[0];
+
+      if (!sheetName) {
+        throw new Error("The Excel file does not contain a worksheet.");
+      }
+
+      const worksheet = workbook.Sheets[sheetName];
+
+      const rows = XLSX.utils.sheet_to_json(worksheet, {
+        defval: "",
+        raw: true,
+      });
+
+      if (!rows.length) {
+        throw new Error("The Excel sheet is empty.");
+      }
+
+      const requiredColumns = [
+        "Date",
+        "Employee Name",
+        "Production",
+        "Audited",
+        "Errors",
+        "Attendance",
+      ];
+
+      const actualColumns = Object.keys(rows[0] || {});
+
+      const missingColumns = requiredColumns.filter(
+        (column) => !actualColumns.includes(column)
+      );
+
+      if (missingColumns.length) {
+        throw new Error(
+          `Missing Excel column(s): ${missingColumns.join(", ")}`
+        );
+      }
+
+      const profileMap = new Map(
+        profiles.map((profile) => [
+          normalizeText(profile.full_name),
+          profile,
+        ])
+      );
+
+      const importRows = [];
+      const validationErrors = [];
+      const duplicateKeys = new Set();
+
+      rows.forEach((row, index) => {
+        const excelRowNumber = index + 2;
+
+        const isCompletelyBlank = requiredColumns.every(
+          (column) =>
+            row[column] === "" ||
+            row[column] === null ||
+            row[column] === undefined
+        );
+
+        if (isCompletelyBlank) return;
+
+        const date = parseExcelDate(row["Date"]);
+        const employeeName = String(
+          row["Employee Name"] ?? ""
+        ).trim();
+
+        const production = Number(row["Production"]);
+        const audited = Number(row["Audited"]);
+        const errors = Number(row["Errors"]);
+
+        const attendance = String(
+          row["Attendance"] ?? ""
+        )
+          .trim()
+          .toLowerCase();
+
+        if (!date) {
+          validationErrors.push(
+            `Row ${excelRowNumber}: Invalid Date. Use DD-MM-YYYY.`
+          );
+          return;
+        }
+
+        const dayIndex = getDayIndexFromDate(date);
+
+        if (dayIndex === -1) {
+          validationErrors.push(
+            `Row ${excelRowNumber}: Sunday is not allowed.`
+          );
+          return;
+        }
+
+        const profile = profileMap.get(
+          normalizeText(employeeName)
+        );
+
+        if (!profile) {
+          validationErrors.push(
+            `Row ${excelRowNumber}: Employee "${employeeName}" was not found in profiles.`
+          );
+          return;
+        }
+
+        if (
+          !isNonNegativeInteger(row["Production"]) ||
+          !isNonNegativeInteger(row["Audited"]) ||
+          !isNonNegativeInteger(row["Errors"])
+        ) {
+          validationErrors.push(
+            `Row ${excelRowNumber}: Production, Audited and Errors must be whole numbers >= 0.`
+          );
+          return;
+        }
+
+        if (errors > audited) {
+          validationErrors.push(
+            `Row ${excelRowNumber}: Errors cannot be greater than Audited.`
+          );
+          return;
+        }
+
+        if (
+          attendance !== "present" &&
+          attendance !== "absent"
+        ) {
+          validationErrors.push(
+            `Row ${excelRowNumber}: Attendance must be Present or Absent.`
+          );
+          return;
+        }
+
+        const duplicateKey = `${profile.id}|${date}`;
+
+        if (duplicateKeys.has(duplicateKey)) {
+          validationErrors.push(
+            `Row ${excelRowNumber}: Duplicate entry for ${employeeName} on ${formatDisplayDate(
+              date
+            )}.`
+          );
+          return;
+        }
+
+        duplicateKeys.add(duplicateKey);
+
+        const weekStart = formatDate(
+          getMonday(new Date(`${date}T00:00:00`))
+        );
+
+        importRows.push({
+          userId: profile.id,
+          employeeName: profile.full_name,
+          date,
+          dayIndex,
+          weekStart,
+          production,
+          audited,
+          errors,
+          attendance:
+            attendance === "present"
+              ? "Present"
+              : "Absent",
+        });
+      });
+
+      if (validationErrors.length) {
+        setImportErrors(validationErrors);
+        throw new Error(
+          `Excel validation failed. ${validationErrors.length} issue(s) found. No data was saved.`
+        );
+      }
+
+      if (!importRows.length) {
+        throw new Error("No valid data rows were found.");
+      }
+
+      const userIds = [
+        ...new Set(importRows.map((row) => row.userId)),
+      ];
+
+      const weekStarts = [
+        ...new Set(importRows.map((row) => row.weekStart)),
+      ];
+
+      const [
+        existingProductionResult,
+        existingQualityResult,
+        existingAttendanceResult,
+      ] = await Promise.all([
+        supabase
+          .from("production")
+          .select("*")
+          .in("user_id", userIds)
+          .in("week_start", weekStarts),
+
+        supabase
+          .from("quality")
+          .select("*")
+          .in("user_id", userIds)
+          .in("week_start", weekStarts),
+
+        supabase
+          .from("attendance")
+          .select("*")
+          .in("user_id", userIds)
+          .in("week_start", weekStarts),
+      ]);
+
+      if (existingProductionResult.error) {
+        throw existingProductionResult.error;
+      }
+
+      if (existingQualityResult.error) {
+        throw existingQualityResult.error;
+      }
+
+      if (existingAttendanceResult.error) {
+        throw existingAttendanceResult.error;
+      }
+
+      const productionMap = new Map(
+        (existingProductionResult.data || []).map(
+          (row) => [
+            `${row.user_id}|${row.week_start}`,
+            { ...row },
+          ]
+        )
+      );
+
+      const qualityMap = new Map(
+        (existingQualityResult.data || []).map(
+          (row) => [
+            `${row.user_id}|${row.week_start}`,
+            { ...row },
+          ]
+        )
+      );
+
+      const attendanceMap = new Map(
+        (existingAttendanceResult.data || []).map(
+          (row) => [
+            `${row.user_id}|${row.week_start}`,
+            { ...row },
+          ]
+        )
+      );
+
+      importRows.forEach((row) => {
+        const day = DAYS[row.dayIndex];
+
+        const key = `${row.userId}|${row.weekStart}`;
+
+        if (!productionMap.has(key)) {
+          productionMap.set(key, {
+            user_id: row.userId,
+            week_start: row.weekStart,
+          });
+        }
+
+        if (!qualityMap.has(key)) {
+          qualityMap.set(key, {
+            user_id: row.userId,
+            week_start: row.weekStart,
+          });
+        }
+
+        if (!attendanceMap.has(key)) {
+          attendanceMap.set(key, {
+            user_id: row.userId,
+            week_start: row.weekStart,
+          });
+        }
+
+        productionMap.get(key)[day.production] =
+          row.production;
+
+        qualityMap.get(key)[day.audited] =
+          row.audited;
+
+        qualityMap.get(key)[day.errors] =
+          row.errors;
+
+        attendanceMap.get(key)[day.key] =
+          row.attendance;
+      });
+
+      const productionPayload = [
+        ...productionMap.values(),
+      ].map((row) => {
+        const clean = {
+          user_id: row.user_id,
+          week_start: row.week_start,
+        };
+
+        DAYS.forEach((day) => {
+          clean[day.production] =
+            Number(row[day.production]) || 0;
+        });
+
+        return clean;
+      });
+
+      const qualityPayload = [
+        ...qualityMap.values(),
+      ].map((row) => {
+        const clean = {
+          user_id: row.user_id,
+          week_start: row.week_start,
+        };
+
+        DAYS.forEach((day) => {
+          clean[day.audited] =
+            Number(row[day.audited]) || 0;
+
+          clean[day.errors] =
+            Number(row[day.errors]) || 0;
+        });
+
+        return clean;
+      });
+
+      const attendancePayload = [
+        ...attendanceMap.values(),
+      ].map((row) => {
+        const clean = {
+          user_id: row.user_id,
+          week_start: row.week_start,
+        };
+
+        DAYS.forEach((day) => {
+          clean[day.key] =
+            row[day.key] || "Present";
+        });
+
+        return clean;
+      });
+
+      const [
+        productionUpsert,
+        qualityUpsert,
+        attendanceUpsert,
+      ] = await Promise.all([
+        supabase
+          .from("production")
+          .upsert(productionPayload, {
+            onConflict: "user_id,week_start",
+          }),
+
+        supabase
+          .from("quality")
+          .upsert(qualityPayload, {
+            onConflict: "user_id,week_start",
+          }),
+
+        supabase
+          .from("attendance")
+          .upsert(attendancePayload, {
+            onConflict: "user_id,week_start",
+          }),
+      ]);
+
+      if (productionUpsert.error) {
+        throw productionUpsert.error;
+      }
+
+      if (qualityUpsert.error) {
+        throw qualityUpsert.error;
+      }
+
+      if (attendanceUpsert.error) {
+        throw attendanceUpsert.error;
+      }
+
+      setImportMessage(
+        `${importRows.length} Excel row(s) imported successfully. Production, quality and attendance are now saved in Supabase.`
+      );
+
+      await loadAdminData();
+    } catch (error) {
+      console.error("Excel import error:", error);
+
+      if (!String(error?.message || "").startsWith("Excel validation failed.")) {
+        setImportMessage(
+          error?.message ||
+            "Excel import failed. No data was saved."
+        );
+      }
+    } finally {
+      setImportingExcel(false);
     }
   };
 
@@ -551,6 +1064,192 @@ const AdminDashboard = () => {
       (user) => user.id === selectedUser.id
     );
   }, [monthlyData, selectedUser]);
+
+  const selectedUserDailyDetails = useMemo(() => {
+    if (!selectedUser) return null;
+
+    const productionRow = productionRows.find(
+      (row) =>
+        row.user_id === selectedUser.id &&
+        row.week_start === selectedWeek
+    );
+
+    const qualityRow = qualityRows.find(
+      (row) =>
+        row.user_id === selectedUser.id &&
+        row.week_start === selectedWeek
+    );
+
+    const attendanceRow = attendanceRows.find(
+      (row) =>
+        row.user_id === selectedUser.id &&
+        row.week_start === selectedWeek
+    );
+
+    return DAYS.map((day, index) => {
+      const production = Number(
+        productionRow?.[day.production]
+      ) || 0;
+
+      const audited = Number(
+        qualityRow?.[day.audited]
+      ) || 0;
+
+      const errors = Number(
+        qualityRow?.[day.errors]
+      ) || 0;
+
+      const quality =
+        audited > 0
+          ? ((audited - errors) / audited) * 100
+          : null;
+
+      const attendance =
+        attendanceRow?.[day.key] || "-";
+
+      return {
+        ...day,
+        date: getDayDate(selectedWeek, index),
+        production,
+        audited,
+        errors,
+        quality,
+        attendance,
+      };
+    });
+  }, [
+    selectedUser,
+    selectedWeek,
+    productionRows,
+    qualityRows,
+    attendanceRows,
+  ]);
+
+  const selectedUserMonthlyWeeks = useMemo(() => {
+    if (!selectedUser) return [];
+
+    const monthStart = new Date(`${selectedMonth}-01T00:00:00`);
+    const monthEnd = new Date(
+      `${getMonthEnd(selectedMonth)}T00:00:00`
+    );
+
+    const firstMonday = getMonday(monthStart);
+    const weeks = [];
+    const currentWeek = new Date(firstMonday);
+
+    while (currentWeek <= monthEnd) {
+      const weekStart = formatDate(currentWeek);
+
+      const productionRow = productionRows.find(
+        (row) =>
+          row.user_id === selectedUser.id &&
+          row.week_start === weekStart
+      );
+
+      const qualityRow = qualityRows.find(
+        (row) =>
+          row.user_id === selectedUser.id &&
+          row.week_start === weekStart
+      );
+
+      const attendanceRow = attendanceRows.find(
+        (row) =>
+          row.user_id === selectedUser.id &&
+          row.week_start === weekStart
+      );
+
+      let production = 0;
+      let audited = 0;
+      let errors = 0;
+      let present = 0;
+      let attendanceTotal = 0;
+      let workingDays = 0;
+
+      DAYS.forEach((day, index) => {
+        const date = getDayDate(weekStart, index);
+        const dateObject = new Date(`${date}T00:00:00`);
+
+        if (
+          dateObject >= monthStart &&
+          dateObject <= monthEnd
+        ) {
+          workingDays += 1;
+
+          production +=
+            Number(productionRow?.[day.production]) || 0;
+
+          audited +=
+            Number(qualityRow?.[day.audited]) || 0;
+
+          errors +=
+            Number(qualityRow?.[day.errors]) || 0;
+
+          if (attendanceRow?.[day.key]) {
+            attendanceTotal += 1;
+
+            if (attendanceRow[day.key] === "Present") {
+              present += 1;
+            }
+          }
+        }
+      });
+
+      // Every week is always Monday-Saturday = 6 working days.
+      // The weekly target must remain 300 even when the week crosses
+      // a month boundary. Sunday is never included.
+      const weeklyTarget = WEEKLY_TARGET;
+
+      const productionPercentage =
+        weeklyTarget > 0
+          ? Math.min(
+              (production / weeklyTarget) * 100,
+              100
+            )
+          : 0;
+
+      const qualityPercentage =
+        audited > 0
+          ? ((audited - errors) / audited) * 100
+          : 0;
+
+      const attendancePercentage =
+        attendanceTotal > 0
+          ? (present / attendanceTotal) * 100
+          : 0;
+
+      const status = getStatus(
+        productionPercentage,
+        qualityPercentage,
+        attendancePercentage
+      );
+
+      weeks.push({
+        weekStart,
+        weekEnd: getSaturday(weekStart),
+        workingDays,
+        weeklyTarget,
+        production,
+        productionPercentage,
+        audited,
+        errors,
+        qualityPercentage,
+        present,
+        attendanceTotal,
+        attendancePercentage,
+        status,
+      });
+
+      currentWeek.setDate(currentWeek.getDate() + 7);
+    }
+
+    return weeks;
+  }, [
+    selectedUser,
+    selectedMonth,
+    productionRows,
+    qualityRows,
+    attendanceRows,
+  ]);
 
   const totalTeamMembers = profiles.length;
 
@@ -828,6 +1527,111 @@ const AdminDashboard = () => {
               </p>
             </div>
           </div>
+        </section>
+
+
+        {/* ===================================================
+            EXCEL IMPORT
+        ==================================================== */}
+
+        <section className="mt-6 bg-white rounded-2xl border border-purple-100 shadow-sm p-5 md:p-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+            <div>
+              <p className="text-xs font-bold text-[#5B2EFF] uppercase tracking-wider">
+                Admin Data Import
+              </p>
+
+              <h2 className="text-xl font-bold mt-1">
+                Upload Daily Excel
+              </h2>
+
+              <p className="text-sm text-gray-500 mt-1">
+                Upload one Excel file containing Date, Employee Name,
+                Production, Audited, Errors and Attendance.
+              </p>
+
+              <p className="text-xs text-gray-400 mt-2">
+                Monday-Saturday only · Sunday is rejected · Existing data
+                for other days is preserved.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowImportPanel((value) => !value)}
+                className="px-4 py-3 rounded-xl border border-gray-200 text-sm font-semibold hover:border-[#5B2EFF] hover:text-[#5B2EFF] transition"
+              >
+                {showImportPanel
+                  ? "Hide Upload"
+                  : "Upload Excel"}
+              </button>
+
+              {showImportPanel && (
+                <label className="cursor-pointer px-5 py-3 rounded-xl bg-[#5B2EFF] text-white text-sm font-semibold hover:opacity-90 transition">
+                  {importingExcel
+                    ? "Importing..."
+                    : "Choose Excel File"}
+
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={handleExcelImport}
+                    disabled={importingExcel}
+                    className="hidden"
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+
+          {showImportPanel && (
+            <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
+                <p className="font-semibold text-gray-800">
+                  Required columns
+                </p>
+
+                <p className="text-sm text-gray-600 mt-2">
+                  Date · Employee Name · Production · Audited · Errors ·
+                  Attendance
+                </p>
+              </div>
+
+              <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                <p className="font-semibold text-gray-800">
+                  Important
+                </p>
+
+                <p className="text-sm text-gray-600 mt-2">
+                  Employee names must match the profiles table. Duplicate
+                  employee/date rows and Sunday entries are rejected.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {importMessage && (
+            <div className="mt-4 rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+              {importMessage}
+            </div>
+          )}
+
+          {importErrors.length > 0 && (
+            <div className="mt-4 rounded-xl bg-red-50 border border-red-200 p-4">
+              <p className="font-semibold text-red-700">
+                Excel validation errors
+              </p>
+
+              <ul className="mt-2 space-y-1 text-sm text-red-600 max-h-48 overflow-y-auto list-disc pl-5">
+                {importErrors.map((message, index) => (
+                  <li key={`${message}-${index}`}>
+                    {message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
 
         {/* ===================================================
@@ -1435,6 +2239,133 @@ const AdminDashboard = () => {
                 </div>
               </div>
 
+              {/* DAILY BREAKDOWN */}
+
+              <div className="mt-8 pt-7 border-t border-gray-100">
+                <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2">
+                  <div>
+                    <h3 className="text-lg font-bold">Daily Breakdown</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Production, quality and attendance for each day
+                    </p>
+                  </div>
+
+                  <p className="text-xs text-gray-500">
+                    Daily production target: {DAILY_TARGET} accounts
+                  </p>
+                </div>
+
+                <div className="mt-5 overflow-x-auto rounded-xl border border-gray-100">
+                  <table className="w-full min-w-[760px]">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-4 py-3 text-xs font-bold uppercase text-gray-500">
+                          Day
+                        </th>
+                        <th className="text-left px-4 py-3 text-xs font-bold uppercase text-gray-500">
+                          Production
+                        </th>
+                        <th className="text-left px-4 py-3 text-xs font-bold uppercase text-gray-500">
+                          Audited
+                        </th>
+                        <th className="text-left px-4 py-3 text-xs font-bold uppercase text-gray-500">
+                          Errors
+                        </th>
+                        <th className="text-left px-4 py-3 text-xs font-bold uppercase text-gray-500">
+                          Quality
+                        </th>
+                        <th className="text-left px-4 py-3 text-xs font-bold uppercase text-gray-500">
+                          Attendance
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {selectedUserDailyDetails?.map((day) => (
+                        <tr
+                          key={day.key}
+                          className="border-t border-gray-100"
+                        >
+                          <td className="px-4 py-4">
+                            <p className="font-semibold">
+                              {day.short}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-1">
+                              {formatDisplayDate(day.date)}
+                            </p>
+                          </td>
+
+                          <td className="px-4 py-4">
+                            <span
+                              className={`font-bold ${
+                                day.production >= DAILY_TARGET
+                                  ? "text-green-600"
+                                  : day.production > 0
+                                  ? "text-orange-600"
+                                  : "text-gray-500"
+                              }`}
+                            >
+                              {day.production}
+                            </span>
+                            <p className="text-xs text-gray-400 mt-1">
+                              / {DAILY_TARGET}
+                            </p>
+                          </td>
+
+                          <td className="px-4 py-4 font-semibold">
+                            {day.audited}
+                          </td>
+
+                          <td className="px-4 py-4">
+                            <span
+                              className={`font-semibold ${
+                                day.errors > 0
+                                  ? "text-red-600"
+                                  : "text-green-600"
+                              }`}
+                            >
+                              {day.errors}
+                            </span>
+                          </td>
+
+                          <td className="px-4 py-4">
+                            {day.quality !== null ? (
+                              <span
+                                className={`font-bold ${
+                                  day.quality >= QUALITY_TARGET
+                                    ? "text-green-600"
+                                    : "text-red-600"
+                                }`}
+                              >
+                                {renderPercentage(day.quality)}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">
+                                No audit
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="px-4 py-4">
+                            <span
+                              className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
+                                day.attendance === "Present"
+                                  ? "bg-green-50 text-green-700"
+                                  : day.attendance === "Absent"
+                                  ? "bg-red-50 text-red-700"
+                                  : "bg-gray-100 text-gray-500"
+                              }`}
+                            >
+                              {day.attendance}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
               {/* MONTHLY */}
 
               <div className="mt-8 pt-7 border-t border-gray-100">
@@ -1518,6 +2449,123 @@ const AdminDashboard = () => {
                     present
                   </p>
                 </div>
+              </div>
+
+              {/* MONTHLY WEEK-BY-WEEK */}
+
+              <div className="mt-8 pt-7 border-t border-gray-100">
+                <h3 className="text-lg font-bold">
+                  Week-by-Week Performance
+                </h3>
+
+                <p className="text-sm text-gray-500 mt-1">
+                  Monthly breakdown for the selected employee
+                </p>
+              </div>
+
+              <div className="mt-5 overflow-x-auto border border-gray-100 rounded-xl">
+                <table className="w-full min-w-[900px]">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-left px-4 py-4 text-xs font-bold uppercase text-gray-500">
+                        Week
+                      </th>
+                      <th className="text-left px-4 py-4 text-xs font-bold uppercase text-gray-500">
+                        Production
+                      </th>
+                      <th className="text-left px-4 py-4 text-xs font-bold uppercase text-gray-500">
+                        Quality
+                      </th>
+                      <th className="text-left px-4 py-4 text-xs font-bold uppercase text-gray-500">
+                        Attendance
+                      </th>
+                      <th className="text-left px-4 py-4 text-xs font-bold uppercase text-gray-500">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {selectedUserMonthlyWeeks.length > 0 ? (
+                      selectedUserMonthlyWeeks.map((week) => (
+                        <tr
+                          key={week.weekStart}
+                          className="border-t border-gray-100"
+                        >
+                          <td className="px-4 py-4">
+                            <p className="font-semibold">
+                              {formatDisplayDate(week.weekStart)}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-1">
+                              to {formatDisplayDate(week.weekEnd)}
+                            </p>
+                          </td>
+
+                          <td className="px-4 py-4">
+                            <p className="font-bold text-[#5B2EFF]">
+                              {week.production} / {week.weeklyTarget}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {renderPercentage(
+                                week.productionPercentage
+                              )}
+                            </p>
+                          </td>
+
+                          <td className="px-4 py-4">
+                            <p
+                              className={`font-bold ${
+                                week.audited > 0
+                                  ? week.qualityPercentage >=
+                                    QUALITY_TARGET
+                                    ? "text-green-600"
+                                    : "text-red-600"
+                                  : "text-gray-500"
+                              }`}
+                            >
+                              {week.audited > 0
+                                ? renderPercentage(
+                                    week.qualityPercentage
+                                  )
+                                : "No audit"}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {week.audited} audited · {week.errors} errors
+                            </p>
+                          </td>
+
+                          <td className="px-4 py-4">
+                            <p className="font-bold text-green-600">
+                              {renderPercentage(
+                                week.attendancePercentage
+                              )}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {week.present}/{week.attendanceTotal} present
+                            </p>
+                          </td>
+
+                          <td className="px-4 py-4">
+                            {renderStatus(
+                              week.productionPercentage,
+                              week.qualityPercentage,
+                              week.attendancePercentage
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan="5"
+                          className="px-4 py-8 text-center text-sm text-gray-500"
+                        >
+                          No weekly data available for this month.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
 
               {/* STATUS */}
