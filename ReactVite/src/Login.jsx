@@ -25,8 +25,7 @@ import { supabase } from "./supabaseClient";
 const loginSchema = z.object({
   loginId: z
     .string()
-    .min(1, "Email is required")
-    .email("Please enter a valid email address")
+    .min(1, "Username is required")
     .trim(),
 
   password: z
@@ -64,33 +63,39 @@ const Login = () => {
     setLoginError("");
 
     try {
-      const { data: authData, error } =
-        await supabase.auth.signInWithPassword({
-          email: data.loginId,
-          password: data.password,
+      // Send username and password to the Supabase Edge Function.
+      const { data: result, error } =
+        await supabase.functions.invoke("username-login", {
+          body: {
+            username: data.loginId.trim(),
+            password: data.password,
+          },
         });
 
-      if (error) {
-        setLoginError(error.message);
+      if (error || !result?.access_token || !result?.refresh_token) {
+        setLoginError(
+          result?.error || "Invalid username or password."
+        );
         return;
       }
 
-      if (!authData?.user) {
+      // Store the Supabase session in this browser.
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: result.access_token,
+        refresh_token: result.refresh_token,
+      });
+
+      if (sessionError) {
+        console.error("Session Error:", sessionError);
         setLoginError("Login failed. Please try again.");
         return;
       }
 
-      // Login successful
       reset();
-
-      // Go to dashboard
       window.location.href = "/Dashboard";
     } catch (error) {
       console.error("Login Error:", error);
-
-      setLoginError(
-        "Something went wrong. Please try again."
-      );
+      setLoginError("Unable to login. Please try again.");
     }
   };
 
@@ -205,7 +210,7 @@ const Login = () => {
                     htmlFor="loginId"
                     className="block text-[14px] font-semibold text-[#294C78] mb-2"
                   >
-                    Email
+                    Username
                   </label>
 
                   <div
@@ -228,8 +233,8 @@ const Login = () => {
 
                     <input
                       id="loginId"
-                      type="email"
-                      placeholder="Enter your registered email"
+                      type="text"
+                      placeholder="Enter your username"
                       autoComplete="username"
                       {...register("loginId")}
                       className="w-full h-[54px] pl-12 pr-4 rounded-xl outline-none bg-transparent text-[#123B78] placeholder:text-[#91A4BB] text-[15px]"
