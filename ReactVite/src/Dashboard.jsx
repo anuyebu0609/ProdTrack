@@ -45,7 +45,7 @@ const Dashboard = () => {
 
   /* =========================================================
      DATE HELPERS
-     ========================================================= */
+  ========================================================= */
 
   const cloneDate = (date) => new Date(date.getTime());
 
@@ -55,13 +55,14 @@ const Dashboard = () => {
     return result;
   };
 
-  // Monday is the first day of the ProdTrack week.
   const getMonday = (date) => {
     const result = cloneDate(date);
     const day = result.getDay();
     const difference = day === 0 ? -6 : 1 - day;
+
     result.setDate(result.getDate() + difference);
     result.setHours(0, 0, 0, 0);
+
     return result;
   };
 
@@ -69,6 +70,7 @@ const Dashboard = () => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
+
     return `${year}-${month}-${day}`;
   };
 
@@ -79,18 +81,13 @@ const Dashboard = () => {
     });
 
   const formatWeekRange = (start, end) => {
-    const sameYear =
-      start.getFullYear() === end.getFullYear();
+    const sameYear = start.getFullYear() === end.getFullYear();
 
     if (sameYear) {
-      return `${formatDayDate(start)} – ${formatDayDate(
-        end
-      )}, ${end.getFullYear()}`;
+      return `${formatDayDate(start)} – ${formatDayDate(end)}, ${end.getFullYear()}`;
     }
 
-    return `${formatDayDate(start)}, ${start.getFullYear()} – ${formatDayDate(
-      end
-    )}, ${end.getFullYear()}`;
+    return `${formatDayDate(start)}, ${start.getFullYear()} – ${formatDayDate(end)}, ${end.getFullYear()}`;
   };
 
   const getCalendarDays = (monthDate) => {
@@ -102,9 +99,8 @@ const Dashboard = () => {
 
     const firstCalendarDay = new Date(firstDay);
     const firstWeekday = firstDay.getDay();
-    firstCalendarDay.setDate(
-      firstDay.getDate() - firstWeekday
-    );
+
+    firstCalendarDay.setDate(firstDay.getDate() - firstWeekday);
 
     return Array.from({ length: 42 }, (_, index) =>
       addDays(firstCalendarDay, index)
@@ -117,43 +113,34 @@ const Dashboard = () => {
 
   const defaultWeekStart = getMonday(new Date());
 
-  const [activeSection, setActiveSection] =
-    useState("dashboard");
+  const [activeSection, setActiveSection] = useState("dashboard");
 
-  const [weekStart, setWeekStart] =
-    useState(defaultWeekStart);
+  const [weekStart, setWeekStart] = useState(defaultWeekStart);
 
-  const [weekEnd, setWeekEnd] =
-    useState(addDays(defaultWeekStart, 5));
+  const [weekEnd, setWeekEnd] = useState(
+    addDays(defaultWeekStart, 5)
+  );
 
-  const [calendarOpen, setCalendarOpen] =
-    useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
-  const [calendarMonth, setCalendarMonth] =
-    useState(
-      new Date(
-        defaultWeekStart.getFullYear(),
-        defaultWeekStart.getMonth(),
-        1
-      )
-    );
+  const [calendarMonth, setCalendarMonth] = useState(
+    new Date(
+      defaultWeekStart.getFullYear(),
+      defaultWeekStart.getMonth(),
+      1
+    )
+  );
 
-  const [production, setProduction] =
-    useState(emptyProduction);
+  const [production, setProduction] = useState(emptyProduction);
 
-  const [quality, setQuality] =
-    useState(emptyQuality);
+  const [quality, setQuality] = useState(emptyQuality);
 
-  const [attendance, setAttendance] =
-    useState(emptyAttendance);
+  const [attendance, setAttendance] = useState(emptyAttendance);
 
+  // Username instead of email
+  const [userName, setUserName] = useState("");
 
-  const [userEmail, setUserEmail] =
-    useState("");
-
-  const [isAdmin, setIsAdmin] =
-    useState(false);
-
+  const [isAdmin, setIsAdmin] = useState(false);
 
   /* =========================================================
      SUPABASE WEEK DATA HELPERS
@@ -161,6 +148,7 @@ const Dashboard = () => {
 
   const getEmptyWeek = () => ({
     production: { ...emptyProduction },
+
     quality: {
       Mon: { ...emptyQuality.Mon },
       Tue: { ...emptyQuality.Tue },
@@ -169,6 +157,7 @@ const Dashboard = () => {
       Fri: { ...emptyQuality.Fri },
       Sat: { ...emptyQuality.Sat },
     },
+
     attendance: { ...emptyAttendance },
   });
 
@@ -216,33 +205,62 @@ const Dashboard = () => {
         return;
       }
 
-      setUserEmail(user.email || "Team Member");
+      /* ==========================================
+         LOAD USERNAME FROM employee_profiles
+      ========================================== */
+
+      const {
+        data: employeeProfile,
+        error: profileError,
+      } = await supabase
+        .from("employee_profiles")
+        .select("username")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (profileError) {
+        console.error("Unable to load username:", profileError);
+      }
+
+      setUserName(
+        employeeProfile?.username ||
+          user.user_metadata?.username ||
+          user.email?.split("@")[0] ||
+          "Team Member"
+      );
+
+      /* ==========================================
+         LOAD WEEK DATA
+      ========================================== */
 
       const weekKey = dateKey(startDate);
 
-      const [productionResult, qualityResult, attendanceResult] =
-        await Promise.all([
-          supabase
-            .from("production")
-            .select("*")
-            .eq("user_id", user.id)
-            .eq("week_start", weekKey)
-            .maybeSingle(),
+      const [
+        productionResult,
+        qualityResult,
+        attendanceResult,
+      ] = await Promise.all([
+        supabase
+          .from("production")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("week_start", weekKey)
+          .maybeSingle(),
 
-          supabase
-            .from("quality")
-            .select("*")
-            .eq("user_id", user.id)
-            .eq("week_start", weekKey)
-            .maybeSingle(),
+        supabase
+          .from("quality")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("week_start", weekKey)
+          .maybeSingle(),
 
-          supabase
-            .from("attendance")
-            .select("*")
-            .eq("user_id", user.id)
-            .eq("week_start", weekKey)
-            .maybeSingle(),
-        ]);
+        supabase
+          .from("attendance")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("week_start", weekKey)
+          .maybeSingle(),
+      ]);
 
       if (productionResult.error) {
         throw productionResult.error;
@@ -278,22 +296,27 @@ const Dashboard = () => {
                 audited: qualityRow.monday_audited ?? "",
                 errors: qualityRow.monday_errors ?? "",
               },
+
               Tue: {
                 audited: qualityRow.tuesday_audited ?? "",
                 errors: qualityRow.tuesday_errors ?? "",
               },
+
               Wed: {
                 audited: qualityRow.wednesday_audited ?? "",
                 errors: qualityRow.wednesday_errors ?? "",
               },
+
               Thu: {
                 audited: qualityRow.thursday_audited ?? "",
                 errors: qualityRow.thursday_errors ?? "",
               },
+
               Fri: {
                 audited: qualityRow.friday_audited ?? "",
                 errors: qualityRow.friday_errors ?? "",
               },
+
               Sat: {
                 audited: qualityRow.saturday_audited ?? "",
                 errors: qualityRow.saturday_errors ?? "",
@@ -358,6 +381,7 @@ const Dashboard = () => {
 
     checkAdmin();
     loadWeekData(defaultWeekStart);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -425,19 +449,23 @@ const Dashboard = () => {
     return Number(production[day]) || 0;
   });
 
-  const weeklyProduction =
-    productionValues.reduce(
-      (total, value) => total + value,
-      0
-    );
+  const weeklyProduction = productionValues.reduce(
+    (total, value) => total + value,
+    0
+  );
 
   const productionRemaining = Math.max(
     WEEKLY_TARGET - weeklyProduction,
     0
   );
 
-  const productionPercentage = Math.min(
-    (weeklyProduction / WEEKLY_TARGET) * 100,
+  // Actual weekly percentage - can exceed 100%
+  const productionPercentage =
+    (weeklyProduction / WEEKLY_TARGET) * 100;
+
+  // Progress bar width should not exceed 100%
+  const productionProgressWidth = Math.min(
+    productionPercentage,
     100
   );
 
@@ -449,18 +477,13 @@ const Dashboard = () => {
   let totalErrors = 0;
 
   days.forEach((day) => {
-    totalAudited +=
-      Number(quality[day]?.audited) || 0;
-
-    totalErrors +=
-      Number(quality[day]?.errors) || 0;
+    totalAudited += Number(quality[day]?.audited) || 0;
+    totalErrors += Number(quality[day]?.errors) || 0;
   });
 
   const qualityPercentage =
     totalAudited > 0
-      ? ((totalAudited - totalErrors) /
-          totalAudited) *
-        100
+      ? ((totalAudited - totalErrors) / totalAudited) * 100
       : 0;
 
   const qualityPassed =
@@ -506,8 +529,7 @@ const Dashboard = () => {
   const scrollToSection = (section) => {
     setActiveSection(section);
 
-    const element =
-      document.getElementById(section);
+    const element = document.getElementById(section);
 
     if (element) {
       element.scrollIntoView({
@@ -548,24 +570,9 @@ const Dashboard = () => {
         <svg {...props}>
           <path d="M4 19V5" />
           <path d="M4 19h17" />
-          <rect
-            x="7"
-            y="11"
-            width="3"
-            height="5"
-          />
-          <rect
-            x="12"
-            y="7"
-            width="3"
-            height="9"
-          />
-          <rect
-            x="17"
-            y="4"
-            width="3"
-            height="12"
-          />
+          <rect x="7" y="11" width="3" height="5" />
+          <rect x="12" y="7" width="3" height="9" />
+          <rect x="17" y="4" width="3" height="12" />
         </svg>
       );
     }
@@ -582,13 +589,7 @@ const Dashboard = () => {
     if (type === "attendance") {
       return (
         <svg {...props}>
-          <rect
-            x="3"
-            y="4"
-            width="18"
-            height="17"
-            rx="2"
-          />
+          <rect x="3" y="4" width="18" height="17" rx="2" />
           <path d="M16 2v4" />
           <path d="M8 2v4" />
           <path d="M3 9h18" />
@@ -611,13 +612,7 @@ const Dashboard = () => {
     if (type === "calendar") {
       return (
         <svg {...props}>
-          <rect
-            x="3"
-            y="4"
-            width="18"
-            height="17"
-            rx="2"
-          />
+          <rect x="3" y="4" width="18" height="17" rx="2" />
           <path d="M16 2v4" />
           <path d="M8 2v4" />
           <path d="M3 9h18" />
@@ -662,7 +657,6 @@ const Dashboard = () => {
       );
     }
 
-
     return null;
   };
 
@@ -670,10 +664,7 @@ const Dashboard = () => {
      STATUS BADGE
   ========================================================= */
 
-  const StatusBadge = ({
-    good,
-    children,
-  }) => {
+  const StatusBadge = ({ good, children }) => {
     return (
       <span
         className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
@@ -684,9 +675,7 @@ const Dashboard = () => {
       >
         <span
           className={`w-1.5 h-1.5 rounded-full ${
-            good
-              ? "bg-green-500"
-              : "bg-red-500"
+            good ? "bg-green-500" : "bg-red-500"
           }`}
         ></span>
 
@@ -728,18 +717,8 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-[#123B7A]">
-
-      {/* =====================================================
-          IMPORTANT LAYOUT
-          Sidebar is now STICKY instead of FIXED.
-          This prevents it from covering the Footer.
-      ====================================================== */}
-
       <div className="flex items-start w-full">
-
-        {/* =====================================================
-            SIDEBAR
-        ====================================================== */}
+        {/* SIDEBAR */}
 
         <aside
           className="
@@ -757,159 +736,93 @@ const Dashboard = () => {
             z-30
           "
         >
-
           {/* SIDEBAR LOGO */}
 
           <div className="h-[88px] px-7 flex items-center border-b border-white/10">
-
             <div className="flex items-center gap-3">
-
               <div className="w-11 h-11 rounded-lg bg-[#FF8500] flex items-center justify-center">
-
-                <Icon
-                  type="target"
-                  size={28}
-                />
-
+                <Icon type="target" size={28} />
               </div>
 
               <div className="text-2xl font-bold">
-
                 <span>Prod</span>
-
-                <span className="text-[#FF8500]">
-                  Track
-                </span>
-
+                <span className="text-[#FF8500]">Track</span>
               </div>
-
             </div>
-
           </div>
-
 
           {/* SIDEBAR MENU */}
 
           <div className="px-4 pt-6 flex-1">
-
             {sidebarItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() =>
-                  scrollToSection(item.id)
-                }
+                onClick={() => scrollToSection(item.id)}
                 className={`w-full flex items-center gap-4 px-4 py-3.5 mb-2 rounded-xl transition-all text-left ${
                   activeSection === item.id
                     ? "bg-[#FF8500] text-white shadow-lg"
                     : "text-white/90 hover:bg-white/10"
                 }`}
               >
-
-                <Icon
-                  type={item.icon}
-                  size={22}
-                />
+                <Icon type={item.icon} size={22} />
 
                 <span className="text-[15px] font-medium">
                   {item.name}
                 </span>
-
               </button>
             ))}
-
           </div>
-
 
           {/* SIDEBAR USER */}
 
           <div className="p-6 border-t border-white/10">
-
             <div className="flex items-center gap-3">
-
               <div className="w-10 h-10 rounded-full bg-[#FF8500] flex items-center justify-center">
-
-                <Icon
-                  type="user"
-                  size={20}
-                />
-
+                <Icon type="user" size={20} />
               </div>
 
               <div>
-
                 <p className="text-sm font-semibold">
-                  {userEmail || "Team Member"}
+                  {userName || "Team Member"}
                 </p>
 
                 <p className="text-xs text-white/60">
                   ProdTrack
                 </p>
-
               </div>
-
             </div>
-
           </div>
-
         </aside>
 
-
-        {/* =====================================================
-            MAIN DASHBOARD
-        ====================================================== */}
+        {/* MAIN DASHBOARD */}
 
         <div className="flex-1 min-w-0">
-
-          {/* ===================================================
-              DASHBOARD INTERNAL HEADER
-          ==================================================== */}
+          {/* HEADER */}
 
           <header className="h-[75px] bg-white border-b border-gray-100">
-
             <div className="h-full px-5 md:px-8 flex items-center justify-between">
-
               {/* MOBILE LOGO */}
 
               <div className="lg:hidden flex items-center gap-2">
-
                 <div className="w-9 h-9 rounded-lg bg-[#FF8500] text-white flex items-center justify-center">
-
-                  <Icon
-                    type="target"
-                    size={21}
-                  />
-
+                  <Icon type="target" size={21} />
                 </div>
 
                 <div className="text-xl font-bold">
-
-                  <span className="text-[#123B7A]">
-                    Prod
-                  </span>
-
-                  <span className="text-[#FF8500]">
-                    Track
-                  </span>
-
+                  <span className="text-[#123B7A]">Prod</span>
+                  <span className="text-[#FF8500]">Track</span>
                 </div>
-
               </div>
-
 
               {/* WEEK CALENDAR */}
 
               <div className="hidden md:block relative">
                 <button
                   type="button"
-                  onClick={() =>
-                    setCalendarOpen((open) => !open)
-                  }
+                  onClick={() => setCalendarOpen((open) => !open)}
                   className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-[#E2EAF4] bg-[#F8FAFC] hover:border-[#FF8500] hover:bg-[#FFF7ED] transition text-left"
                 >
-                  <Icon
-                    type="calendar"
-                    size={18}
-                  />
+                  <Icon type="calendar" size={18} />
 
                   <div>
                     <p className="text-xs text-gray-500">
@@ -943,13 +856,10 @@ const Dashboard = () => {
                       </button>
 
                       <div className="text-sm font-bold text-[#123B7A]">
-                        {calendarMonth.toLocaleDateString(
-                          "en-IN",
-                          {
-                            month: "long",
-                            year: "numeric",
-                          }
-                        )}
+                        {calendarMonth.toLocaleDateString("en-IN", {
+                          month: "long",
+                          year: "numeric",
+                        })}
                       </div>
 
                       <button
@@ -973,78 +883,74 @@ const Dashboard = () => {
                     </div>
 
                     <div className="grid grid-cols-7 gap-1 mb-2">
-                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-                        (dayName) => (
-                          <div
-                            key={dayName}
-                            className={`text-center text-[11px] font-bold py-1 ${
-                              dayName === "Sun"
-                                ? "text-gray-300"
-                                : "text-gray-500"
-                            }`}
-                          >
-                            {dayName}
-                          </div>
-                        )
-                      )}
+                      {[
+                        "Sun",
+                        "Mon",
+                        "Tue",
+                        "Wed",
+                        "Thu",
+                        "Fri",
+                        "Sat",
+                      ].map((dayName) => (
+                        <div
+                          key={dayName}
+                          className={`text-center text-[11px] font-bold py-1 ${
+                            dayName === "Sun"
+                              ? "text-gray-300"
+                              : "text-gray-500"
+                          }`}
+                        >
+                          {dayName}
+                        </div>
+                      ))}
                     </div>
 
                     <div className="grid grid-cols-7 gap-1">
-                      {getCalendarDays(calendarMonth).map(
-                        (date) => {
-                          const isSunday =
-                            date.getDay() === 0;
+                      {getCalendarDays(calendarMonth).map((date) => {
+                        const isSunday = date.getDay() === 0;
 
-                          const isCurrentMonth =
-                            date.getMonth() ===
-                              calendarMonth.getMonth() &&
-                            date.getFullYear() ===
-                              calendarMonth.getFullYear();
+                        const isCurrentMonth =
+                          date.getMonth() === calendarMonth.getMonth() &&
+                          date.getFullYear() === calendarMonth.getFullYear();
 
-                          const selected =
-                            isInSelectedWeek(date);
+                        const selected = isInSelectedWeek(date);
 
-                          const isWeekStart =
-                            isSameDate(date, weekStart);
+                        const isWeekStart = isSameDate(date, weekStart);
+                        const isWeekEnd = isSameDate(date, weekEnd);
 
-                          const isWeekEnd =
-                            isSameDate(date, weekEnd);
-
-                          return (
-                            <button
-                              type="button"
-                              key={dateKey(date)}
-                              disabled={isSunday}
-                              onClick={() =>
-                                !isSunday &&
-                                selectWeek(date)
-                              }
-                              className={`h-9 rounded-lg text-xs font-semibold transition ${
-                                isSunday
-                                  ? "text-gray-200 cursor-not-allowed"
-                                  : selected
-                                  ? "bg-[#FF8500] text-white shadow-sm"
-                                  : isCurrentMonth
-                                  ? "text-[#123B7A] hover:bg-[#FFF0DE]"
-                                  : "text-gray-300 hover:bg-gray-50"
-                              } ${
-                                isWeekStart || isWeekEnd
-                                  ? "ring-2 ring-[#FF8500]/30"
-                                  : ""
-                              }`}
-                              title={
-                                isSunday
-                                  ? "Sunday is not part of the ProdTrack week"
-                                  : `Select week starting ${formatDayDate(
-                                      getMonday(date)
-                                    )}`
-                              }
-                            >
-                              {date.getDate()}
-                            </button>
-                          );
-                        }
-                      )}
+                        return (
+                          <button
+                            type="button"
+                            key={dateKey(date)}
+                            disabled={isSunday}
+                            onClick={() =>
+                              !isSunday && selectWeek(date)
+                            }
+                            className={`h-9 rounded-lg text-xs font-semibold transition ${
+                              isSunday
+                                ? "text-gray-200 cursor-not-allowed"
+                                : selected
+                                ? "bg-[#FF8500] text-white shadow-sm"
+                                : isCurrentMonth
+                                ? "text-[#123B7A] hover:bg-[#FFF0DE]"
+                                : "text-gray-300 hover:bg-gray-50"
+                            } ${
+                              isWeekStart || isWeekEnd
+                                ? "ring-2 ring-[#FF8500]/30"
+                                : ""
+                            }`}
+                            title={
+                              isSunday
+                                ? "Sunday is not part of the ProdTrack week"
+                                : `Select week starting ${formatDayDate(
+                                    getMonday(date)
+                                  )}`
+                            }
+                          >
+                            {date.getDate()}
+                          </button>
+                        );
+                      })}
                     </div>
 
                     <div className="mt-3 pt-3 border-t border-gray-100">
@@ -1057,34 +963,23 @@ const Dashboard = () => {
                 )}
               </div>
 
-
               {/* TOP RIGHT USER + ADMIN BUTTON */}
 
               <div className="flex items-center gap-3 ml-auto">
-
                 <div className="flex items-center gap-3">
-
                   <div className="w-10 h-10 rounded-full bg-[#123B7A] text-white flex items-center justify-center">
-
-                    <Icon
-                      type="user"
-                      size={19}
-                    />
-
+                    <Icon type="user" size={19} />
                   </div>
 
                   <div className="hidden sm:block">
-
                     <p className="text-sm font-semibold">
-                      {userEmail || "Team Member"}
+                      {userName || "Team Member"}
                     </p>
 
                     <p className="text-xs text-gray-500">
                       Weekly Performance
                     </p>
-
                   </div>
-
                 </div>
 
                 {isAdmin && (
@@ -1095,280 +990,181 @@ const Dashboard = () => {
                     }}
                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#FF8500] text-white font-semibold text-sm hover:bg-[#e87500] transition-all duration-200 shadow-md hover:shadow-lg whitespace-nowrap"
                   >
-                    <Icon
-                      type="team"
-                      size={18}
-                    />
+                    <Icon type="team" size={18} />
                     <span>Admin Dashboard</span>
                   </button>
                 )}
-
               </div>
-
             </div>
-
           </header>
 
-
-          {/* ===================================================
-              PAGE CONTENT
-          ==================================================== */}
+          {/* PAGE CONTENT */}
 
           <div className="p-5 md:p-8 space-y-7">
+            {/* DASHBOARD */}
 
-            {/* =================================================
-                DASHBOARD
-            ================================================== */}
-
-            <section
-              id="dashboard"
-              className="scroll-mt-24"
-            >
-
+            <section id="dashboard" className="scroll-mt-24">
               <div className="mb-6">
-
                 <h1 className="text-2xl md:text-3xl font-bold">
                   Welcome Back
                 </h1>
 
                 <p className="text-gray-500 mt-1">
-                  Here's your weekly performance at a glance. Your data is updated by your team lead.
+                  Here's your weekly performance at a glance. Your data
+                  is updated by your team lead.
                 </p>
-
               </div>
-
 
               {/* KPI CARDS */}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
-
                 {/* PRODUCTION */}
 
                 <div
-                  onClick={() =>
-                    scrollToSection("production")
-                  }
+                  onClick={() => scrollToSection("production")}
                   className="bg-white rounded-2xl border border-[#FFE0C2] p-5 shadow-sm cursor-pointer hover:shadow-md transition"
                 >
-
                   <div className="flex items-center gap-3">
-
                     <div className="w-11 h-11 rounded-full bg-[#FFF0DE] text-[#FF8500] flex items-center justify-center">
-
-                      <Icon
-                        type="production"
-                        size={22}
-                      />
-
+                      <Icon type="production" size={22} />
                     </div>
 
-                    <h3 className="font-semibold">
-                      Production
-                    </h3>
-
+                    <h3 className="font-semibold">Production</h3>
                   </div>
 
-
                   <div className="mt-4">
-
                     <div className="text-3xl font-bold">
-
                       {weeklyProduction}
 
                       <span className="text-lg text-gray-400">
                         {" "}
                         / {WEEKLY_TARGET}
                       </span>
-
                     </div>
 
                     <p className="text-sm text-gray-500">
                       weekly accounts
                     </p>
 
+                    {/* WEEKLY ACHIEVED PERCENTAGE */}
+
+                    <p className="text-sm font-semibold text-[#FF8500] mt-1">
+                      {productionPercentage.toFixed(1)}% achieved
+                    </p>
                   </div>
 
-
                   <div className="mt-4 h-2 bg-gray-100 rounded-full overflow-hidden">
-
                     <div
                       className="h-full bg-[#FF8500] rounded-full transition-all"
                       style={{
-                        width: `${productionPercentage}%`,
+                        width: `${productionProgressWidth}%`,
                       }}
                     ></div>
-
                   </div>
 
-
                   <p className="text-sm mt-2 text-gray-500">
-
                     Balance:{" "}
-
                     <strong className="text-[#123B7A]">
                       {productionRemaining}
                     </strong>
-
                   </p>
-
                 </div>
-
 
                 {/* QUALITY */}
 
                 <div
-                  onClick={() =>
-                    scrollToSection("quality")
-                  }
+                  onClick={() => scrollToSection("quality")}
                   className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm cursor-pointer hover:shadow-md transition"
                 >
-
                   <div className="flex items-center gap-3">
-
                     <div className="w-11 h-11 rounded-full bg-blue-50 text-[#123B7A] flex items-center justify-center">
-
-                      <Icon
-                        type="quality"
-                        size={22}
-                      />
-
+                      <Icon type="quality" size={22} />
                     </div>
 
-                    <h3 className="font-semibold">
-                      Quality
-                    </h3>
-
+                    <h3 className="font-semibold">Quality</h3>
                   </div>
 
-
                   <div className="mt-4">
-
                     <div className="text-3xl font-bold">
-
                       {totalAudited > 0
                         ? qualityPercentage.toFixed(1)
                         : "0.0"}
                       %
-
                     </div>
 
                     <p className="text-sm text-gray-500">
                       Target: 98%
                     </p>
-
                   </div>
 
-
                   <div className="mt-4">
-
                     {totalAudited === 0 ? (
                       <StatusBadge good={false}>
                         No Data
                       </StatusBadge>
                     ) : (
                       <StatusBadge good={qualityPassed}>
-                        {qualityPassed
-                          ? "On Track"
-                          : "Needs Attention"}
+                        {qualityPassed ? "On Track" : "Needs Attention"}
                       </StatusBadge>
                     )}
-
                   </div>
-
                 </div>
-
 
                 {/* ATTENDANCE */}
 
                 <div
-                  onClick={() =>
-                    scrollToSection("attendance")
-                  }
+                  onClick={() => scrollToSection("attendance")}
                   className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm cursor-pointer hover:shadow-md transition"
                 >
-
                   <div className="flex items-center gap-3">
-
                     <div className="w-11 h-11 rounded-full bg-blue-50 text-[#123B7A] flex items-center justify-center">
-
-                      <Icon
-                        type="attendance"
-                        size={22}
-                      />
-
+                      <Icon type="attendance" size={22} />
                     </div>
 
-                    <h3 className="font-semibold">
-                      Attendance
-                    </h3>
-
+                    <h3 className="font-semibold">Attendance</h3>
                   </div>
 
-
                   <div className="mt-4">
-
                     <div className="text-3xl font-bold">
-
                       {presentDays}
 
                       <span className="text-lg text-gray-400">
                         {" "}
                         / 6
                       </span>
-
                     </div>
 
                     <p className="text-sm text-gray-500">
                       days present
                     </p>
-
                   </div>
 
-
                   <div className="mt-4 h-2 bg-gray-100 rounded-full overflow-hidden">
-
                     <div
                       className="h-full bg-[#FF8500] rounded-full"
                       style={{
                         width: `${attendancePercentage}%`,
                       }}
                     ></div>
-
                   </div>
-
                 </div>
-
 
                 {/* OVERALL */}
 
                 <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-
                   <div className="flex items-center gap-3">
-
                     <div className="w-11 h-11 rounded-full bg-[#FFF0DE] text-[#FF8500] flex items-center justify-center">
-
-                      <Icon
-                        type="target"
-                        size={22}
-                      />
-
+                      <Icon type="target" size={22} />
                     </div>
 
-                    <h3 className="font-semibold">
-                      Overall Status
-                    </h3>
-
+                    <h3 className="font-semibold">Overall Status</h3>
                   </div>
-
 
                   <div
                     className={`mt-4 rounded-xl p-4 ${
-                      overallOnTrack
-                        ? "bg-green-50"
-                        : "bg-red-50"
+                      overallOnTrack ? "bg-green-50" : "bg-red-50"
                     }`}
                   >
-
                     <p
                       className={`font-bold ${
                         overallOnTrack
@@ -1376,134 +1172,77 @@ const Dashboard = () => {
                           : "text-red-600"
                       }`}
                     >
-                      {overallOnTrack
-                        ? "On Track"
-                        : "Needs Attention"}
+                      {overallOnTrack ? "On Track" : "Needs Attention"}
                     </p>
 
                     <p className="text-xs text-gray-500 mt-1">
-
                       {overallOnTrack
                         ? "Great job! Keep going."
                         : "Check your remaining targets."}
-
                     </p>
-
                   </div>
-
                 </div>
-
               </div>
-
 
               {/* ALERTS */}
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
-
                 {productionRemaining > 0 && (
                   <div className="bg-[#FFF7ED] border border-[#FFD9AD] rounded-2xl p-5">
-
                     <div className="flex items-start gap-4">
-
                       <div className="w-11 h-11 rounded-full bg-[#FF8500] text-white flex items-center justify-center shrink-0">
-
-                        <Icon
-                          type="alert"
-                          size={21}
-                        />
-
+                        <Icon type="alert" size={21} />
                       </div>
 
                       <div>
-
                         <h3 className="font-bold">
                           Production Reminder
                         </h3>
 
                         <p className="text-sm text-gray-600 mt-1">
-
                           You need to achieve{" "}
-
                           <strong className="text-[#FF8500]">
                             {productionRemaining}
                           </strong>{" "}
-
-                          more accounts to reach your
-                          weekly target of{" "}
-                          <strong>
-                            {WEEKLY_TARGET}
-                          </strong>.
-
+                          more accounts to reach your weekly target of{" "}
+                          <strong>{WEEKLY_TARGET}</strong>.
                         </p>
-
                       </div>
-
                     </div>
-
                   </div>
                 )}
 
-
                 {totalAudited > 0 && !qualityPassed && (
                   <div className="bg-red-50 border border-red-200 rounded-2xl p-5">
-
                     <div className="flex items-start gap-4">
-
                       <div className="w-11 h-11 rounded-full bg-red-500 text-white flex items-center justify-center shrink-0">
-
-                        <Icon
-                          type="alert"
-                          size={21}
-                        />
-
+                        <Icon type="alert" size={21} />
                       </div>
 
                       <div>
-
                         <h3 className="font-bold text-red-700">
                           Quality Reminder
                         </h3>
 
                         <p className="text-sm text-gray-600 mt-1">
-
                           Your current quality is{" "}
-
                           <strong>
                             {qualityPercentage.toFixed(1)}%
-                          </strong>.
-
-                          Keep future errors as low as
-                          possible to maintain the{" "}
-                          <strong>
-                            98%
-                          </strong>{" "}
-                          target.
-
+                          </strong>
+                          . Keep future errors as low as possible to
+                          maintain the <strong>98%</strong> target.
                         </p>
-
                       </div>
-
                     </div>
-
                   </div>
                 )}
-
               </div>
-
             </section>
 
+            {/* PRODUCTION */}
 
-            {/* =================================================
-                PRODUCTION
-            ================================================== */}
-
-            <section
-              id="production"
-              className="scroll-mt-24"
-            >
-
+            <section id="production" className="scroll-mt-24">
               <div className="mb-5">
-
                 <h2 className="text-xl md:text-2xl font-bold">
                   Production
                 </h2>
@@ -1511,16 +1250,13 @@ const Dashboard = () => {
                 <p className="text-sm text-gray-500 mt-1">
                   Your saved production performance.
                 </p>
-
               </div>
 
-
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-7">
-
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-7">
+                  {/* WEEKLY PRODUCTION */}
 
                   <div className="bg-[#F8FAFC] rounded-xl p-5">
-
                     <p className="text-xs text-gray-500">
                       Weekly Production
                     </p>
@@ -1529,11 +1265,14 @@ const Dashboard = () => {
                       {weeklyProduction}
                     </p>
 
+                    <p className="text-sm font-semibold text-[#FF8500] mt-1">
+                      {productionPercentage.toFixed(1)}% achieved
+                    </p>
                   </div>
 
+                  {/* WEEKLY TARGET */}
 
                   <div className="bg-[#F8FAFC] rounded-xl p-5">
-
                     <p className="text-xs text-gray-500">
                       Weekly Target
                     </p>
@@ -1542,11 +1281,14 @@ const Dashboard = () => {
                       {WEEKLY_TARGET}
                     </p>
 
+                    <p className="text-sm text-gray-500 mt-1">
+                      100% target
+                    </p>
                   </div>
 
+                  {/* BALANCE */}
 
                   <div className="bg-[#FFF7ED] rounded-xl p-5">
-
                     <p className="text-xs text-gray-500">
                       Balance
                     </p>
@@ -1554,41 +1296,33 @@ const Dashboard = () => {
                     <p className="text-3xl font-bold text-[#FF8500] mt-1">
                       {productionRemaining}
                     </p>
-
                   </div>
-
                 </div>
 
+                {/* DAILY PRODUCTION CHART */}
 
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-
                   {days.map((day) => {
+                    const value = Number(production[day]) || 0;
 
-                    const value =
-                      Number(
-                        production[day]
-                      ) || 0;
+                    const reached = value >= DAILY_TARGET;
 
-                    const reached =
-                      value >= DAILY_TARGET;
+                    const achievedPercentage =
+                      (value / DAILY_TARGET) * 100;
 
                     return (
-                      <div
-                        key={day}
-                        className="text-center"
-                      >
-
+                      <div key={day} className="text-center">
                         <div className="mb-3">
                           <p className="text-sm font-bold text-[#123B7A]">
                             {day}
                           </p>
+
                           <p className="text-xs text-gray-400 mt-0.5">
                             {getDayDateLabel(day)}
                           </p>
                         </div>
 
                         <div className="h-[160px] bg-[#F8FAFC] rounded-xl flex items-end justify-center p-3">
-
                           <div
                             className={`w-full max-w-[45px] rounded-t-lg ${
                               reached
@@ -1600,87 +1334,67 @@ const Dashboard = () => {
                             style={{
                               height: `${Math.max(
                                 Math.min(
-                                  (value /
-                                    DAILY_TARGET) *
-                                    130,
+                                  (value / DAILY_TARGET) * 130,
                                   130
                                 ),
-                                value > 0
-                                  ? 8
-                                  : 4
+                                value > 0 ? 8 : 4
                               )}px`,
                             }}
                           ></div>
-
                         </div>
 
+                        {/* DAILY ACHIEVED COUNT */}
+
                         <p className="font-bold text-lg mt-2">
-                          {value}
+                          {value} / {DAILY_TARGET}
                         </p>
 
+                        {/* DAILY ACHIEVED PERCENTAGE */}
+
+                        <p
+                          className={`text-sm font-semibold ${
+                            achievedPercentage >= 100
+                              ? "text-green-600"
+                              : "text-[#FF8500]"
+                          }`}
+                        >
+                          {achievedPercentage.toFixed(1)}%
+                        </p>
                       </div>
                     );
                   })}
-
                 </div>
-
 
                 {productionRemaining > 0 && (
                   <div className="mt-7 bg-[#FFF7ED] border border-[#FFD9AD] rounded-xl p-5">
-
                     <div className="flex gap-3">
-
                       <div className="text-[#FF8500]">
-
-                        <Icon
-                          type="alert"
-                          size={21}
-                        />
-
+                        <Icon type="alert" size={21} />
                       </div>
 
                       <div>
-
                         <p className="font-semibold">
                           Production Reminder
                         </p>
 
                         <p className="text-sm text-gray-600 mt-1">
-
                           You need to achieve{" "}
-
                           <strong className="text-[#FF8500]">
                             {productionRemaining}
                           </strong>{" "}
-
-                          more accounts to complete your
-                          weekly target.
-
+                          more accounts to complete your weekly target.
                         </p>
-
                       </div>
-
                     </div>
-
                   </div>
                 )}
-
               </div>
-
             </section>
 
+            {/* QUALITY */}
 
-            {/* =================================================
-                QUALITY
-            ================================================== */}
-
-            <section
-              id="quality"
-              className="scroll-mt-24"
-            >
-
+            <section id="quality" className="scroll-mt-24">
               <div className="mb-5">
-
                 <h2 className="text-xl md:text-2xl font-bold">
                   Quality
                 </h2>
@@ -1688,66 +1402,33 @@ const Dashboard = () => {
                 <p className="text-sm text-gray-500 mt-1">
                   Your saved audit performance.
                 </p>
-
               </div>
 
-
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-
                 <div className="xl:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-7">
-
                   <div className="overflow-x-auto">
-
                     <table className="w-full min-w-[600px]">
-
                       <thead>
-
                         <tr className="bg-[#F8FAFC] text-left text-sm">
-
-                          <th className="px-4 py-3">
-                            Day
-                          </th>
-
-                          <th className="px-4 py-3">
-                            Audited
-                          </th>
-
-                          <th className="px-4 py-3">
-                            Errors
-                          </th>
-
-                          <th className="px-4 py-3">
-                            Quality
-                          </th>
-
-                          <th className="px-4 py-3">
-                            Status
-                          </th>
-
+                          <th className="px-4 py-3">Day</th>
+                          <th className="px-4 py-3">Audited</th>
+                          <th className="px-4 py-3">Errors</th>
+                          <th className="px-4 py-3">Quality</th>
+                          <th className="px-4 py-3">Status</th>
                         </tr>
-
                       </thead>
 
                       <tbody>
-
                         {days.map((day) => {
-
                           const audited =
-                            Number(
-                              quality[day]?.audited
-                            ) || 0;
+                            Number(quality[day]?.audited) || 0;
 
                           const errors =
-                            Number(
-                              quality[day]?.errors
-                            ) || 0;
+                            Number(quality[day]?.errors) || 0;
 
                           const percentage =
                             audited > 0
-                              ? ((audited -
-                                  errors) /
-                                  audited) *
-                                100
+                              ? ((audited - errors) / audited) * 100
                               : 0;
 
                           return (
@@ -1755,11 +1436,9 @@ const Dashboard = () => {
                               key={day}
                               className="border-b border-gray-100"
                             >
-
                               <td className="px-4 py-4">
-                                <p className="font-semibold">
-                                  {day}
-                                </p>
+                                <p className="font-semibold">{day}</p>
+
                                 <p className="text-xs text-gray-400 mt-0.5">
                                   {getDayDateLabel(day)}
                                 </p>
@@ -1774,26 +1453,19 @@ const Dashboard = () => {
                               </td>
 
                               <td className="px-4 py-4 font-semibold">
-
                                 {audited > 0
-                                  ? `${percentage.toFixed(
-                                      1
-                                    )}%`
+                                  ? `${percentage.toFixed(1)}%`
                                   : "--"}
-
                               </td>
 
                               <td className="px-4 py-4">
-
                                 {audited > 0 ? (
                                   <StatusBadge
                                     good={
-                                      percentage >=
-                                      QUALITY_TARGET
+                                      percentage >= QUALITY_TARGET
                                     }
                                   >
-                                    {percentage >=
-                                    QUALITY_TARGET
+                                    {percentage >= QUALITY_TARGET
                                       ? "Green"
                                       : "Red"}
                                   </StatusBadge>
@@ -1802,46 +1474,27 @@ const Dashboard = () => {
                                     No data
                                   </span>
                                 )}
-
                               </td>
-
                             </tr>
                           );
                         })}
-
                       </tbody>
-
                     </table>
-
                   </div>
-
                 </div>
-
 
                 {/* QUALITY SUMMARY */}
 
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-7">
-
                   <div className="flex items-center gap-3">
-
                     <div className="w-11 h-11 rounded-full bg-blue-50 text-[#123B7A] flex items-center justify-center">
-
-                      <Icon
-                        type="quality"
-                        size={22}
-                      />
-
+                      <Icon type="quality" size={22} />
                     </div>
 
-                    <h3 className="font-bold">
-                      Weekly Quality
-                    </h3>
-
+                    <h3 className="font-bold">Weekly Quality</h3>
                   </div>
 
-
                   <div className="mt-6">
-
                     <p className="text-sm text-gray-500">
                       Current Average
                     </p>
@@ -1855,19 +1508,11 @@ const Dashboard = () => {
                           : "text-[#123B7A]"
                       }`}
                     >
-
-                      {qualityPercentage.toFixed(
-                        1
-                      )}
-                      %
-
+                      {qualityPercentage.toFixed(1)}%
                     </p>
-
                   </div>
 
-
                   <div className="mt-5 h-3 bg-gray-100 rounded-full overflow-hidden">
-
                     <div
                       className={`h-full rounded-full ${
                         qualityPassed
@@ -1881,96 +1526,57 @@ const Dashboard = () => {
                         )}%`,
                       }}
                     ></div>
-
                   </div>
 
-
                   <div className="mt-5 space-y-3">
-
                     <div className="flex justify-between text-sm">
-
                       <span className="text-gray-500">
                         Audited
                       </span>
 
-                      <strong>
-                        {totalAudited}
-                      </strong>
-
+                      <strong>{totalAudited}</strong>
                     </div>
 
-
                     <div className="flex justify-between text-sm">
-
                       <span className="text-gray-500">
                         Total Errors
                       </span>
 
-                      <strong>
-                        {totalErrors}
-                      </strong>
-
+                      <strong>{totalErrors}</strong>
                     </div>
 
-
                     <div className="flex justify-between text-sm">
-
                       <span className="text-gray-500">
                         Target
                       </span>
 
-                      <strong>
-                        98%
-                      </strong>
-
+                      <strong>98%</strong>
                     </div>
-
                   </div>
-
 
                   {totalAudited > 0 && (
                     <div className="mt-5 bg-[#FFF7ED] border border-[#FFD9AD] rounded-xl p-4">
-
                       <p className="text-sm font-semibold">
                         Error Reminder
                       </p>
 
                       <p className="text-sm text-gray-600 mt-1">
-
                         {errorsRemaining > 0
-                          ? `You can avoid ${
-                              errorsRemaining
-                            } more error${
-                              errorsRemaining !==
-                              1
-                                ? "s"
-                                : ""
+                          ? `You can avoid ${errorsRemaining} more error${
+                              errorsRemaining !== 1 ? "s" : ""
                             } to stay at or above 98%.`
                           : "Avoid further errors to protect your 98% target."}
-
                       </p>
-
                     </div>
                   )}
-
                 </div>
-
               </div>
-
             </section>
 
+            {/* ATTENDANCE */}
 
-            {/* =================================================
-                ATTENDANCE
-            ================================================== */}
-
-            <section
-              id="attendance"
-              className="scroll-mt-24"
-            >
-
+            <section id="attendance" className="scroll-mt-24">
               <div className="mb-5">
-
                 <h2 className="text-xl md:text-2xl font-bold">
                   Attendance
                 </h2>
@@ -1978,24 +1584,15 @@ const Dashboard = () => {
                 <p className="text-sm text-gray-500 mt-1">
                   Your saved attendance from Monday to Saturday.
                 </p>
-
               </div>
 
-
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-7">
-
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-
                   {days.map((day) => {
+                    const status = attendance[day];
 
-                    const status =
-                      attendance[day];
-
-                    const present =
-                      status === "Present";
-
-                    const absent =
-                      status === "Absent";
+                    const present = status === "Present";
+                    const absent = status === "Absent";
 
                     return (
                       <div
@@ -2008,10 +1605,8 @@ const Dashboard = () => {
                             : "bg-gray-50 border-gray-200"
                         }`}
                       >
+                        <p className="font-bold">{day}</p>
 
-                        <p className="font-bold">
-                          {day}
-                        </p>
                         <p className="text-xs text-gray-400 mt-1">
                           {getDayDateLabel(day)}
                         </p>
@@ -2025,22 +1620,15 @@ const Dashboard = () => {
                               : "text-gray-400"
                           }`}
                         >
-
                           {status || "Not Updated"}
-
                         </div>
-
                       </div>
                     );
                   })}
-
                 </div>
 
-
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
-
                   <div className="bg-green-50 rounded-xl p-5">
-
                     <p className="text-xs text-gray-500">
                       Present
                     </p>
@@ -2048,12 +1636,9 @@ const Dashboard = () => {
                     <p className="text-2xl font-bold text-green-600 mt-1">
                       {presentDays}
                     </p>
-
                   </div>
 
-
                   <div className="bg-red-50 rounded-xl p-5">
-
                     <p className="text-xs text-gray-500">
                       Absent
                     </p>
@@ -2061,40 +1646,23 @@ const Dashboard = () => {
                     <p className="text-2xl font-bold text-red-600 mt-1">
                       {absentDays}
                     </p>
-
                   </div>
 
-
                   <div className="bg-[#F8FAFC] rounded-xl p-5">
-
                     <p className="text-xs text-gray-500">
                       Attendance
                     </p>
 
                     <p className="text-2xl font-bold mt-1">
-
-                      {attendancePercentage.toFixed(
-                        0
-                      )}
-                      %
-
+                      {attendancePercentage.toFixed(0)}%
                     </p>
-
                   </div>
-
                 </div>
-
               </div>
-
             </section>
-
-
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 };
